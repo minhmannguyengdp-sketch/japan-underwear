@@ -12,3 +12,15 @@ yarn-error.log*
 pnpm-debug.log*
 .DS_Store
 *.tsbuildinfo
+
+# Local catalog assets: keep on developer machines only, never commit to GitHub.
+/local-assets/
+/catalog-images/
+/imports/images/
+/public/catalog-local/
+/data/local/
+
+# Local export/import scratch files.
+/imports/*.json
+/imports/*.csv
+/exports/
