@@ -1,4 +1,4 @@
-/* Tuấn Thủy catalog scraper — paste into DevTools Console on tuanthuy.com.vn */
+/* Tuấn Thủy catalog audit — paste into DevTools Console on tuanthuy.com.vn */
 (async () => {
   'use strict';
 
@@ -22,7 +22,13 @@
   const errors = [];
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
-  const uniq = (values) => [...new Set(values.filter(Boolean))];
+  const uniq = (values) => [...new Set(values.map(clean).filter(Boolean))];
+
+  const COLOR_WORDS = /(m[aà]u|color|colour|mau-sac|mau_sac|pa_mau)/i;
+  const SIZE_WORDS = /(^|\b)(size|k[ií]ch c[ỡơ]|k[ií]ch thước|c[ỡơ]|sz|vòng lưng|lưng)(\b|$)/i;
+  const CUP_WORDS = /(^|\b)(cup|cúp|bầu ngực)(\b|$)/i;
+  const IGNORE_OPTION = /(chọn|select|choose|vui lòng)/i;
+  const BOILERPLATE = /(đổi trả|giao hàng|thanh toán|hotline|liên hệ|bảo quản|hướng dẫn giặt|chính sách|cam kết|copyright)/i;
 
   function sameOriginUrl(value, base = location.href) {
     try {
@@ -40,7 +46,7 @@
   }
 
   function money(value) {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.round(value);
     const digits = clean(value).replace(/[^\d]/g, '');
     return digits ? Number(digits) : null;
   }
@@ -90,48 +96,224 @@
     return Array.isArray(value.offers) ? value.offers : [value];
   }
 
-  function wooVariants(doc) {
-    const form = doc.querySelector('form.variations_form[data-product_variations]');
-    if (!form) return [];
-    try {
-      return JSON.parse(form.getAttribute('data-product_variations') || '[]').map((row) => ({
-        externalId: String(row.variation_id || ''),
-        sku: clean(row.sku),
-        options: Object.fromEntries(Object.entries(row.attributes || {})
-          .map(([key, value]) => [clean(key.replace(/^attribute_/, '').replace(/^pa_/, '').replace(/[-_]+/g, ' ')), clean(value)])
-          .filter(([key, value]) => key && value)),
-        price: money(row.display_price ?? row.price_html),
-        compareAtPrice: money(row.display_regular_price),
-        inStock: Boolean(row.is_in_stock ?? row.is_purchasable),
-        image: assetUrl(row.image?.full_src ?? row.image?.src),
-      }));
-    } catch { return []; }
+  function optionName(value) {
+    return clean(value)
+      .replace(/^attribute_/, '')
+      .replace(/^pa_/, '')
+      .replace(/[-_]+/g, ' ');
   }
 
-  function sizeVariants(doc, basePrice) {
+  function classifyOption(name) {
+    const value = optionName(name);
+    if (COLOR_WORDS.test(value)) return 'color';
+    if (CUP_WORDS.test(value)) return 'cup';
+    if (SIZE_WORDS.test(value)) return 'size';
+    return 'other';
+  }
+
+  function normalizeCup(value) {
+    const raw = clean(value).toUpperCase().replace(/^CUP\s*/i, '');
+    return raw || null;
+  }
+
+  function normalizeSize(value) {
+    const raw = clean(value).toUpperCase().replace(/^SIZE\s*/i, '');
+    return raw || null;
+  }
+
+  function splitCombinedSizeCup(value) {
+    const raw = clean(value).toUpperCase().replace(/\s+/g, '');
+    const match = raw.match(/^(\d{2,3}|[SMLX]{1,4}|\d?XL|2X|3X|4X)[-\/]?([A-H])$/i);
+    if (!match) return { size: normalizeSize(value), cup: null };
+    return { size: normalizeSize(match[1]), cup: normalizeCup(match[2]) };
+  }
+
+  function rawWooVariants(doc) {
+    const forms = [...doc.querySelectorAll('form.variations_form[data-product_variations]')];
     const rows = [];
-    const sizeWords = /(size|kích cỡ|kích thước|cỡ|sz)/i;
-    for (const select of doc.querySelectorAll('select')) {
-      const label = clean(`${select.name} ${select.id} ${select.getAttribute('aria-label')}`);
-      if (!sizeWords.test(label)) continue;
-      for (const option of select.options) {
-        const value = clean(option.value);
-        const name = clean(option.textContent);
-        if (!value || option.disabled || /chọn|select|choose/i.test(name)) continue;
-        rows.push({ externalId: value, sku: '', options: { size: name }, price: money(option.dataset.price) ?? basePrice, compareAtPrice: null, inStock: true, image: null });
+    for (const form of forms) {
+      try {
+        const parsed = JSON.parse(form.getAttribute('data-product_variations') || '[]');
+        for (const row of parsed) {
+          rows.push({
+            externalId: String(row.variation_id || ''),
+            sku: clean(row.sku),
+            rawOptions: Object.fromEntries(Object.entries(row.attributes || {})
+              .map(([key, value]) => [optionName(key), clean(value)])
+              .filter(([key, value]) => key && value)),
+            price: money(row.display_price ?? row.price_html),
+            compareAtPrice: money(row.display_regular_price),
+            inStock: Boolean(row.is_in_stock ?? row.is_purchasable),
+            image: assetUrl(row.image?.full_src ?? row.image?.src),
+          });
+        }
+      } catch (error) {
+        errors.push({ stage: 'variation-json', url: location.href, message: String(error?.message || error) });
       }
     }
-    for (const node of doc.querySelectorAll('[data-variation-id][data-value], [data-variation_id][data-value], .swatch[data-value], .variable-item[data-value]')) {
-      const value = clean(node.dataset.value || node.textContent);
-      if (!value) continue;
-      rows.push({
-        externalId: clean(node.dataset.variationId || node.getAttribute('data-variation_id') || value),
-        sku: clean(node.dataset.sku), options: { size: value }, price: money(node.dataset.price) ?? basePrice,
-        compareAtPrice: money(node.dataset.regularPrice), inStock: !node.matches('.disabled,[disabled],.out-of-stock'), image: assetUrl(node.dataset.image),
-      });
+    return rows;
+  }
+
+  function attributeOptions(doc) {
+    const result = { colors: [], sizes: [], cups: [], other: {} };
+    for (const select of doc.querySelectorAll('select')) {
+      const name = optionName(`${select.name} ${select.id} ${select.getAttribute('aria-label')}`);
+      const type = classifyOption(name);
+      const values = [...select.options]
+        .filter((option) => option.value && !option.disabled && !IGNORE_OPTION.test(clean(option.textContent)))
+        .map((option) => clean(option.textContent || option.value));
+      if (type === 'color') result.colors.push(...values);
+      else if (type === 'size') result.sizes.push(...values);
+      else if (type === 'cup') result.cups.push(...values);
+      else if (values.length) result.other[name || 'unknown'] = uniq([...(result.other[name] || []), ...values]);
     }
-    const seen = new Set();
-    return rows.filter((row) => { const key = JSON.stringify(row.options); if (seen.has(key)) return false; seen.add(key); return true; });
+
+    for (const node of doc.querySelectorAll('[data-value], [data-attribute_name], .variable-item, .swatch')) {
+      const context = clean(`${node.getAttribute('data-attribute_name')} ${node.closest('[data-attribute_name]')?.getAttribute('data-attribute_name')} ${node.parentElement?.className}`);
+      const value = clean(node.getAttribute('data-value') || node.getAttribute('title') || node.textContent);
+      if (!value || IGNORE_OPTION.test(value)) continue;
+      const type = classifyOption(context);
+      if (type === 'color') result.colors.push(value);
+      else if (type === 'size') result.sizes.push(value);
+      else if (type === 'cup') result.cups.push(value);
+    }
+
+    result.colors = uniq(result.colors);
+    result.sizes = uniq(result.sizes);
+    result.cups = uniq(result.cups);
+    return result;
+  }
+
+  function parseVariationOptions(rawOptions) {
+    const parsed = { size: null, cup: null, colors: [], other: {} };
+    for (const [name, rawValue] of Object.entries(rawOptions || {})) {
+      const type = classifyOption(name);
+      if (type === 'color') parsed.colors.push(rawValue);
+      else if (type === 'cup') parsed.cup = normalizeCup(rawValue);
+      else if (type === 'size') {
+        const combined = splitCombinedSizeCup(rawValue);
+        parsed.size = combined.size;
+        parsed.cup = parsed.cup || combined.cup;
+      } else {
+        const combined = splitCombinedSizeCup(rawValue);
+        if (!parsed.size && combined.cup) {
+          parsed.size = combined.size;
+          parsed.cup = parsed.cup || combined.cup;
+        } else {
+          parsed.other[name] = rawValue;
+        }
+      }
+    }
+    parsed.colors = uniq(parsed.colors);
+    return parsed;
+  }
+
+  function fallbackSizeCupRows(doc, basePrice) {
+    const attributes = attributeOptions(doc);
+    const rows = [];
+    const sizes = attributes.sizes.length ? attributes.sizes : [null];
+    const cups = attributes.cups.length ? attributes.cups : [null];
+    for (const sizeValue of sizes) {
+      const combined = sizeValue ? splitCombinedSizeCup(sizeValue) : { size: null, cup: null };
+      for (const cupValue of cups) {
+        const size = combined.size;
+        const cup = normalizeCup(cupValue) || combined.cup;
+        if (!size && !cup) continue;
+        rows.push({
+          externalId: '', sku: '', rawOptions: {}, size, cup,
+          colors: [], price: basePrice, compareAtPrice: null, inStock: true, image: null,
+          evidence: 'page-controls-cartesian-fallback',
+        });
+      }
+    }
+    return rows;
+  }
+
+  function groupOrderableVariants(rawRows, basePrice) {
+    const groups = new Map();
+    const unmappedRows = [];
+    for (const row of rawRows) {
+      const parsed = row.size !== undefined
+        ? { size: row.size, cup: row.cup, colors: row.colors || [], other: {} }
+        : parseVariationOptions(row.rawOptions);
+      if (!parsed.size && !parsed.cup) {
+        unmappedRows.push(row);
+        continue;
+      }
+      const size = parsed.size || 'NO_SIZE';
+      const cup = parsed.cup || null;
+      const key = `${size}::${cup || ''}`;
+      const current = groups.get(key) || {
+        variantKey: key,
+        size,
+        cup,
+        label: cup ? `${size}${cup}` : size,
+        sourceVariantIds: [],
+        sourceSkus: [],
+        sourceColors: [],
+        priceCandidates: [],
+        compareAtPriceCandidates: [],
+        inStockStates: [],
+        rawRows: [],
+      };
+      current.sourceVariantIds.push(row.externalId);
+      current.sourceSkus.push(row.sku);
+      current.sourceColors.push(...parsed.colors);
+      if (row.price != null) current.priceCandidates.push(row.price);
+      else if (basePrice != null) current.priceCandidates.push(basePrice);
+      if (row.compareAtPrice != null) current.compareAtPriceCandidates.push(row.compareAtPrice);
+      current.inStockStates.push(Boolean(row.inStock));
+      current.rawRows.push({ externalId: row.externalId, sku: row.sku, rawOptions: row.rawOptions || {}, price: row.price, inStock: row.inStock });
+      groups.set(key, current);
+    }
+
+    const variants = [...groups.values()].map((group) => {
+      const prices = [...new Set(group.priceCandidates)];
+      const comparePrices = [...new Set(group.compareAtPriceCandidates)];
+      const stockStates = [...new Set(group.inStockStates)];
+      return {
+        variantKey: group.variantKey,
+        size: group.size,
+        cup: group.cup,
+        label: group.label,
+        sku: uniq(group.sourceSkus).length === 1 ? uniq(group.sourceSkus)[0] : null,
+        sourceVariantIds: uniq(group.sourceVariantIds),
+        sourceSkus: uniq(group.sourceSkus),
+        sourceColors: uniq(group.sourceColors),
+        price: prices.length === 1 ? prices[0] : null,
+        priceCandidates: prices,
+        compareAtPrice: comparePrices.length === 1 ? comparePrices[0] : null,
+        inStock: group.inStockStates.some(Boolean),
+        stockStates,
+        priceConsistent: prices.length <= 1,
+        stockConsistent: stockStates.length <= 1,
+        sourceRowCount: group.rawRows.length,
+        rawRows: group.rawRows,
+      };
+    }).sort((a, b) => a.label.localeCompare(b.label, 'vi', { numeric: true }));
+
+    return { variants, unmappedRows };
+  }
+
+  function descriptionAudit(doc, ldDescription) {
+    const root = doc.querySelector('#tab-description, .woocommerce-Tabs-panel--description, .woocommerce-product-details__short-description, .product-description, [itemprop="description"]');
+    const rawText = clean(ldDescription) || clean(root?.textContent);
+    const nodes = root ? [...root.querySelectorAll('li, p, h2, h3, h4')] : [];
+    const featureCandidates = uniq(nodes
+      .map((node) => clean(node.textContent))
+      .filter((value) => value.length >= 12 && value.length <= 240 && !BOILERPLATE.test(value)))
+      .slice(0, 16);
+    return { rawText, featureCandidates };
+  }
+
+  function modelCandidates(...values) {
+    const found = [];
+    for (const value of values) {
+      for (const match of clean(value).matchAll(/(?:AL|QL|QG|QI)?['’\s-]*([5789]\d{3})(?:-([A-Z0-9]+))?/gi)) {
+        found.push(match[1]);
+      }
+    }
+    return uniq(found);
   }
 
   function isProductPage(doc) {
@@ -147,33 +329,52 @@
     const domPrice = money(text(doc, ['[itemprop="price"]', '.summary .price', '.product-price', '.price'])
       || attr(doc, ['meta[property="product:price:amount"]'], 'content'));
     const price = offerPrices.length ? Math.min(...offerPrices) : domPrice;
-    const variants = wooVariants(doc);
     const path = new URL(url).pathname.split('/').filter(Boolean);
     const stock = text(doc, ['.stock', '.availability', '[itemprop="availability"]']);
     const ldImages = (Array.isArray(ld.image) ? ld.image : [ld.image]).map((item) => assetUrl(typeof item === 'string' ? item : item?.url));
     const domImages = [attr(doc, ['meta[property="og:image"]'], 'content'), ...[...doc.querySelectorAll('.woocommerce-product-gallery img, .product-gallery img, main img')].slice(0, 20).map((img) => img.currentSrc || img.src || img.dataset.src)].map((item) => assetUrl(item, url));
     const crumbs = [...doc.querySelectorAll('.breadcrumb a,.breadcrumbs a,nav[aria-label*="breadcrumb" i] a')].map((node) => clean(node.textContent)).filter((item) => item && !/trang chủ|home/i.test(item));
-    const base = {
+    const name = clean(ld.name) || text(doc, ['h1.product_title', 'h1.product-title', '[itemprop="name"]', 'main h1', 'h1']) || attr(doc, ['meta[property="og:title"]'], 'content');
+    const sku = clean(ld.sku ?? ld.mpn) || text(doc, ['.sku', '[itemprop="sku"]']);
+    const sourceKey = path.at(-1) || path.at(-2) || '';
+    const attributes = attributeOptions(doc);
+    const rawVariants = rawWooVariants(doc);
+    const sourceRows = rawVariants.length ? rawVariants : fallbackSizeCupRows(doc, price);
+    const grouped = groupOrderableVariants(sourceRows, price);
+    const variationColors = rawVariants.flatMap((row) => parseVariationOptions(row.rawOptions).colors);
+    const description = descriptionAudit(doc, ld.description);
+    const colors = uniq([...attributes.colors, ...variationColors]);
+    const blockers = [];
+    if (!grouped.variants.length) blockers.push('no-size-cup-variants');
+    if (grouped.unmappedRows.length) blockers.push('unmapped-source-variation-options');
+    if (grouped.variants.some((variant) => !variant.priceConsistent)) blockers.push('conflicting-prices-for-size-cup');
+    if (grouped.variants.some((variant) => !variant.price)) blockers.push('missing-variant-price');
+
+    return {
       sourceUrl: url,
-      sourceKey: path.at(-1) || path.at(-2) || '',
-      name: clean(ld.name) || text(doc, ['h1.product_title', 'h1.product-title', '[itemprop="name"]', 'main h1', 'h1']) || attr(doc, ['meta[property="og:title"]'], 'content'),
-      sku: clean(ld.sku ?? ld.mpn) || text(doc, ['.sku', '[itemprop="sku"]']),
+      sourceKey,
+      name,
+      sku,
+      modelCandidates: modelCandidates(name, sku, sourceKey),
       brand: clean(typeof ld.brand === 'string' ? ld.brand : ld.brand?.name),
       category: crumbs.at(-1) || '',
-      description: clean(ld.description) || text(doc, ['#tab-description', '.woocommerce-product-details__short-description', '.product-description', '[itemprop="description"]']),
+      breadcrumbs: crumbs,
+      description: description.rawText,
+      featureCandidates: description.featureCandidates,
       price,
       compareAtPrice: offerPrices.length > 1 ? Math.max(...offerPrices) : null,
       currency: clean(offers[0]?.priceCurrency) || 'VND',
       inStock: !/outofstock|hết hàng|out of stock/i.test(`${offers[0]?.availability || ''} ${stock}`),
       images: uniq([...ldImages, ...domImages]),
-      variants: variants.length ? variants : sizeVariants(doc, price),
+      colors,
+      colorSource: colors.length ? 'page-attributes-and-variation-aggregate' : null,
+      orderableDimensions: ['size', 'cup'],
+      variants: grouped.variants,
+      unmappedSourceVariations: grouped.unmappedRows,
+      otherAttributes: attributes.other,
+      blockers: uniq(blockers),
       scrapedAt: new Date().toISOString(),
     };
-    base.variants = base.variants.map((variant, index) => ({
-      variantKey: variant.sku || `${base.sourceKey}-${clean(variant.options.size || index + 1).toLowerCase().replace(/\s+/g, '-')}`,
-      ...variant,
-    }));
-    return base;
   }
 
   function links(doc, base, selectors) {
@@ -236,19 +437,38 @@
     await sleep(cfg.delayMs);
   }
 
+  const sortedProducts = products.sort((a, b) => a.name.localeCompare(b.name, 'vi'));
   const payload = {
+    schemaVersion: 2,
     source: location.origin,
     generatedAt: new Date().toISOString(),
-    productCount: products.length,
-    listingPagesVisited: listingSeen.size,
+    businessRules: {
+      colorsAreProductLevelDisplayData: true,
+      colorsDoNotParticipateInOrderVariantIdentity: true,
+      orderVariantIdentity: 'product + size + cup',
+      descriptionsRequireConciseFeatureReviewBeforeImport: true,
+    },
+    summary: {
+      productCount: sortedProducts.length,
+      listingPagesVisited: listingSeen.size,
+      productsWithColors: sortedProducts.filter((product) => product.colors.length > 0).length,
+      productsWithVariants: sortedProducts.filter((product) => product.variants.length > 0).length,
+      productsWithFeatureCandidates: sortedProducts.filter((product) => product.featureCandidates.length > 0).length,
+      productsWithBlockers: sortedProducts.filter((product) => product.blockers.length > 0).length,
+      errorCount: errors.length,
+    },
     errors,
-    products: products.sort((a, b) => a.name.localeCompare(b.name, 'vi')),
+    products: sortedProducts,
   };
+
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
   const downloadUrl = URL.createObjectURL(blob);
-  const anchor = Object.assign(document.createElement('a'), { href: downloadUrl, download: `tuan-thuy-catalog-${new Date().toISOString().slice(0, 10)}.json` });
+  const anchor = Object.assign(document.createElement('a'), { href: downloadUrl, download: `tuan-thuy-product-audit-${new Date().toISOString().slice(0, 10)}.json` });
   document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(downloadUrl);
   window.__TT_CATALOG_SCRAPER_RESULT__ = payload;
   window.__TT_SCRAPER_RUNNING__ = false;
   console.log('[TT] Finished', payload);
-})();
+})().catch((error) => {
+  window.__TT_SCRAPER_RUNNING__ = false;
+  console.error('[TT] Fatal', error);
+});
