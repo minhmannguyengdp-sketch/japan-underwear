@@ -193,14 +193,15 @@ try {
 
   const variantProductIds = variantProductKeys.map((key) => productIdByKey.get(key));
   const colorProductIds = colorProductKeys.map((key) => productIdByKey.get(key));
+  const unionProductIds = unionProductKeys.map((key) => productIdByKey.get(key));
 
   await client.query(
     `UPDATE japan_underwear.product_variants SET is_active = false, updated_at = now() WHERE product_id = ANY($1::uuid[])`,
-    [variantProductIds],
+    [unionProductIds],
   );
   await client.query(
     `UPDATE japan_underwear.product_colors SET is_active = false WHERE product_id = ANY($1::uuid[])`,
-    [colorProductIds],
+    [unionProductIds],
   );
 
   const variantsWithIds = variantRows.map((row) => ({
@@ -270,7 +271,7 @@ try {
             )
         ) AS orderable_products
     `,
-    [variantProductIds, colorProductIds, unionProductKeys.map((key) => productIdByKey.get(key))],
+    [variantProductIds, colorProductIds, unionProductIds],
   );
   const checked = checkResult.rows[0];
   if (Number(checked.variants) !== 199 || Number(checked.colors) !== 66 || Number(checked.orderable_products) !== 2) {
