@@ -62,7 +62,12 @@ function isLocalDatabase(value) {
   }
 }
 
-const drizzleKitPath = path.resolve(cwd, "node_modules", "drizzle-kit", "bin.cjs");
+const productIdentityScriptPath = path.resolve(
+  cwd,
+  "scripts",
+  "db",
+  "apply-product-identity.mjs",
+);
 const verifyScriptPath = path.resolve(
   cwd,
   "scripts",
@@ -96,8 +101,8 @@ console.log(`Database host: ${new URL(connectionString).hostname}`);
 console.log(`Expected products: ${expectedProducts}`);
 console.log(`Expected images: ${expectedImages}`);
 
-console.log("\n[1/4] Chạy migration...");
-runNodeStep("Drizzle migration", drizzleKitPath, ["migrate"]);
+console.log("\n[1/4] Chuẩn hóa migration product identity...");
+runNodeStep("Product identity migration", productIdentityScriptPath);
 
 console.log("\n[2/4] Kiểm tra schema...");
 runNodeStep("Catalog DB verification", verifyScriptPath);
