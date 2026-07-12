@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+@theme {
+  --color-tt-purple-50: #f7f3ff;
+  --color-tt-purple-100: #eee5ff;
+  --color-tt-purple-200: #dfccff;
+  --color-tt-purple-300: #c9a5ff;
+  --color-tt-purple-400: #ab72ff;
+  --color-tt-purple-500: #8b46ef;
+  --color-tt-purple-600: #7428d7;
+  --color-tt-purple-700: #5f20b0;
+  --color-tt-purple-800: #4f1d8f;
+  --color-tt-purple-900: #421976;
+  --color-winking-red: #d51f2b;
+  --color-winking-red-dark: #a91520;
+  --color-ink-950: #20152d;
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #20152d;
+  --surface-soft: #faf8fd;
+  --border-soft: #e9e1f0;
+  --purple: #7428d7;
+  --purple-dark: #4f1d8f;
+  --winking-red: #d51f2b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(116, 40, 215, 0.08), transparent 28rem),
+    linear-gradient(180deg, #ffffff 0%, #fbf9fd 100%);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 3px solid rgba(116, 40, 215, 0.24);
+  outline-offset: 2px;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
