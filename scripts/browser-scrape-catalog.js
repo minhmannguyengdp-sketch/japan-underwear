@@ -208,21 +208,21 @@
     return parsed;
   }
 
-  function fallbackSizeCupRows(doc, basePrice) {
-    const attributes = attributeOptions(doc);
+  function fallbackSizeCupRows(attributes, basePrice) {
     const rows = [];
-    const sizes = attributes.sizes.length ? attributes.sizes : [null];
-    const cups = attributes.cups.length ? attributes.cups : [null];
-    for (const sizeValue of sizes) {
-      const combined = sizeValue ? splitCombinedSizeCup(sizeValue) : { size: null, cup: null };
-      for (const cupValue of cups) {
-        const size = combined.size;
-        const cup = normalizeCup(cupValue) || combined.cup;
-        if (!size && !cup) continue;
+    for (const sizeValue of attributes.sizes) {
+      const combined = splitCombinedSizeCup(sizeValue);
+      if (combined.cup) {
         rows.push({
-          externalId: '', sku: '', rawOptions: {}, size, cup,
+          externalId: '', sku: '', rawOptions: {}, size: combined.size, cup: combined.cup,
           colors: [], price: basePrice, compareAtPrice: null, inStock: true, image: null,
-          evidence: 'page-controls-cartesian-fallback',
+          evidence: 'combined-size-cup-page-control',
+        });
+      } else if (attributes.cups.length === 0) {
+        rows.push({
+          externalId: '', sku: '', rawOptions: {}, size: combined.size, cup: null,
+          colors: [], price: basePrice, compareAtPrice: null, inStock: true, image: null,
+          evidence: 'size-only-page-control',
         });
       }
     }
@@ -263,7 +263,7 @@
       else if (basePrice != null) current.priceCandidates.push(basePrice);
       if (row.compareAtPrice != null) current.compareAtPriceCandidates.push(row.compareAtPrice);
       current.inStockStates.push(Boolean(row.inStock));
-      current.rawRows.push({ externalId: row.externalId, sku: row.sku, rawOptions: row.rawOptions || {}, price: row.price, inStock: row.inStock });
+      current.rawRows.push({ externalId: row.externalId, sku: row.sku, rawOptions: row.rawOptions || {}, price: row.price, inStock: row.inStock, evidence: row.evidence || 'woo-variation' });
       groups.set(key, current);
     }
 
@@ -339,13 +339,14 @@
     const sourceKey = path.at(-1) || path.at(-2) || '';
     const attributes = attributeOptions(doc);
     const rawVariants = rawWooVariants(doc);
-    const sourceRows = rawVariants.length ? rawVariants : fallbackSizeCupRows(doc, price);
+    const sourceRows = rawVariants.length ? rawVariants : fallbackSizeCupRows(attributes, price);
     const grouped = groupOrderableVariants(sourceRows, price);
     const variationColors = rawVariants.flatMap((row) => parseVariationOptions(row.rawOptions).colors);
     const description = descriptionAudit(doc, ld.description);
     const colors = uniq([...attributes.colors, ...variationColors]);
     const blockers = [];
     if (!grouped.variants.length) blockers.push('no-size-cup-variants');
+    if (!rawVariants.length && attributes.sizes.length > 0 && attributes.cups.length > 0) blockers.push('unverified-size-cup-combinations');
     if (grouped.unmappedRows.length) blockers.push('unmapped-source-variation-options');
     if (grouped.variants.some((variant) => !variant.priceConsistent)) blockers.push('conflicting-prices-for-size-cup');
     if (grouped.variants.some((variant) => !variant.price)) blockers.push('missing-variant-price');
@@ -368,6 +369,8 @@
       images: uniq([...ldImages, ...domImages]),
       colors,
       colorSource: colors.length ? 'page-attributes-and-variation-aggregate' : null,
+      availableSizes: attributes.sizes,
+      availableCups: attributes.cups,
       orderableDimensions: ['size', 'cup'],
       variants: grouped.variants,
       unmappedSourceVariations: grouped.unmappedRows,
@@ -447,6 +450,7 @@
       colorsDoNotParticipateInOrderVariantIdentity: true,
       orderVariantIdentity: 'product + size + cup',
       descriptionsRequireConciseFeatureReviewBeforeImport: true,
+      noCartesianSizeCupInference: true,
     },
     summary: {
       productCount: sortedProducts.length,
