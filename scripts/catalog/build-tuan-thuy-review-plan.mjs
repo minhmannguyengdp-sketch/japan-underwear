@@ -72,6 +72,24 @@ function inspectVariant(variant) {
   };
 }
 
+function inspectColor(color, sortOrder) {
+  const issues = [];
+  const code = clean(color.code).toLowerCase();
+  const name = clean(color.name);
+  const evidenceUrls = unique(color.evidenceUrls ?? []);
+  if (!code) issues.push("missing-color-code");
+  if (!name) issues.push("missing-color-name");
+  if (!evidenceUrls.length) issues.push("missing-color-evidence-url");
+  return {
+    code,
+    name,
+    sourceSystem: clean(color.sourceSystem),
+    evidenceUrls,
+    sortOrder,
+    issues,
+  };
+}
+
 const [auditText, manifestText] = await Promise.all([
   fs.readFile(auditPath, "utf8"),
   fs.readFile(manifestPath, "utf8"),
@@ -79,12 +97,8 @@ const [auditText, manifestText] = await Promise.all([
 const audit = JSON.parse(auditText);
 const manifest = JSON.parse(manifestText);
 
-if (!Array.isArray(audit.products)) {
-  throw new Error("Consolidated audit không có mảng products.");
-}
-if (!Array.isArray(manifest.products)) {
-  throw new Error("Catalog manifest không có mảng products.");
-}
+if (!Array.isArray(audit.products)) throw new Error("Consolidated audit không có mảng products.");
+if (!Array.isArray(manifest.products)) throw new Error("Catalog manifest không có mảng products.");
 
 const activeProducts = manifest.products
   .map((product) => ({
@@ -101,7 +115,6 @@ const duplicateActiveKeys = [...new Set(
     .map((product) => product.key)
     .filter((key, index, keys) => keys.indexOf(key) !== index),
 )].sort();
-
 if (duplicateActiveKeys.length) {
   throw new Error(`Catalog manifest có khóa product trùng: ${duplicateActiveKeys.join(", ")}`);
 }
@@ -110,9 +123,7 @@ const activeByKey = new Map(activeProducts.map((product) => [product.key, produc
 const webByKey = new Map();
 for (const product of audit.products) {
   const key = clean(product.key) || productKey(product);
-  if (webByKey.has(key)) {
-    throw new Error(`Consolidated audit có product trùng: ${key}`);
-  }
+  if (webByKey.has(key)) throw new Error(`Consolidated audit có product trùng: ${key}`);
   webByKey.set(key, product);
 }
 
@@ -125,35 +136,46 @@ const productReviews = [...webByKey.entries()]
         .map((variant) => variant.variantKey)
         .filter((variantKey, index, keys) => keys.indexOf(variantKey) !== index),
     )].sort();
-    const validationIssues = unique([
+    const variantValidationIssues = unique([
       ...variantReviews.flatMap((variant) => variant.issues),
       ...(duplicateVariantKeys.length ? ["duplicate-variant-keys"] : []),
-      ...(!Number.isInteger(product.authoritativeBasePriceVnd) ||
-      product.authoritativeBasePriceVnd <= 0
+      ...(!Number.isInteger(product.authoritativeBasePriceVnd) || product.authoritativeBasePriceVnd <= 0
         ? ["missing-authoritative-base-price"]
         : []),
     ]).sort();
 
+    const colorReviews = (product.colors ?? []).map(inspectColor);
+    const duplicateColorCodes = [...new Set(
+      colorReviews
+        .map((color) => color.code)
+        .filter((code, index, codes) => codes.indexOf(code) !== index),
+    )].sort();
+    const colorValidationIssues = unique([
+      ...colorReviews.flatMap((color) => color.issues),
+      ...(duplicateColorCodes.length ? ["duplicate-color-codes"] : []),
+    ]).sort();
+
     const sourceBlockers = unique(product.audit?.blockers ?? []).sort();
     const reviewFlags = unique(product.audit?.reviewFlags ?? []).sort();
-    const hasVariantCandidates = variantReviews.length > 0;
     const active = Boolean(activeProduct);
+    const hasVariantCandidates = variantReviews.length > 0;
+    const hasColorCandidates = colorReviews.length > 0;
 
     let variantDisposition = "not-applicable";
     if (!active) variantDisposition = "outside-active-catalog";
-    else if (sourceBlockers.length || !hasVariantCandidates || validationIssues.length) {
+    else if (sourceBlockers.length || !hasVariantCandidates || variantValidationIssues.length) {
       variantDisposition = "blocked";
     } else {
       variantDisposition = "reviewed-candidate";
     }
 
-    const colorCandidates = (product.colors ?? []).map((color, sortOrder) => ({
-      code: clean(color.code),
-      name: clean(color.name),
-      sourceSystem: clean(color.sourceSystem),
-      evidenceUrls: unique(color.evidenceUrls ?? []),
-      sortOrder,
-    }));
+    const colorDisposition =
+      active && hasColorCandidates && colorValidationIssues.length === 0
+        ? "product-order-choice-candidate"
+        : "none";
+    const orderableCandidate =
+      variantDisposition === "reviewed-candidate" &&
+      colorDisposition === "product-order-choice-candidate";
 
     return {
       key,
@@ -163,12 +185,18 @@ const productReviews = [...webByKey.entries()]
       authoritativeBasePriceVnd: product.authoritativeBasePriceVnd ?? null,
       variantDisposition,
       variantCandidates: variantReviews.map(({ issues, ...variant }) => variant),
-      variantValidationIssues: validationIssues,
+      variantValidationIssues,
       sourceBlockers,
       reviewFlags,
-      colorDisposition:
-        active && colorCandidates.length ? "product-display-candidate" : "none",
-      colorCandidates,
+      colorDisposition,
+      colorCandidates: colorReviews.map(({ issues, ...color }) => color),
+      colorValidationIssues,
+      orderableCandidate,
+      orderingBlocker: orderableCandidate
+        ? null
+        : variantDisposition !== "reviewed-candidate"
+          ? "missing-or-blocked-size-cup"
+          : "missing-or-blocked-color",
       primaryContentSourceUrl: product.primaryContentSourceUrl ?? null,
       descriptionAvailable: Boolean(clean(product.description)),
       featureCandidateCount: (product.featureCandidates ?? []).length,
@@ -189,11 +217,12 @@ const activeBlockedProducts = activeWebProducts.filter(
   (product) => product.variantDisposition === "blocked",
 );
 const activeColorCandidates = activeWebProducts.filter(
-  (product) => product.colorDisposition === "product-display-candidate",
+  (product) => product.colorDisposition === "product-order-choice-candidate",
 );
+const activeOrderableCandidates = activeWebProducts.filter((product) => product.orderableCandidate);
 
 const output = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   generatedAt: new Date().toISOString(),
   sourceAudit: {
     path: auditPath,
@@ -209,11 +238,12 @@ const output = {
   businessRules: {
     productIdentity: "brand + category + model",
     orderVariantIdentity: "product + size + cup",
-    colorsAreDisplayOnlyProductMetadata: true,
+    orderLineIdentity: "product + color + size + cup",
+    colorsAreProductLevelOrderChoices: true,
+    colorsParticipateInCartIdentity: true,
     colorsDoNotControlGallery: true,
-    colorsDoNotParticipateInCartIdentity: true,
     noColorImageMapping: true,
-    noCartesianSizeCupInference: true,
+    noPrecomputedColorSizeCupCartesianRows: true,
     authoritativePricingSource: "price-reference",
     websitePricesAreAuditEvidenceOnly: true,
     databaseWritePerformed: false,
@@ -236,6 +266,15 @@ const output = {
       (sum, product) => sum + product.colorCandidates.length,
       0,
     ),
+    activeOrderableCandidateProductCount: activeOrderableCandidates.length,
+    activeOrderableVariantCandidateCount: activeOrderableCandidates.reduce(
+      (sum, product) => sum + product.variantCandidates.length,
+      0,
+    ),
+    activeOrderableColorCandidateCount: activeOrderableCandidates.reduce(
+      (sum, product) => sum + product.colorCandidates.length,
+      0,
+    ),
     importReadyProductCount: 0,
   },
   decisions: {
@@ -246,15 +285,20 @@ const output = {
       reviewFlags: product.reviewFlags,
       primaryContentSourceUrl: product.primaryContentSourceUrl,
     })),
+    activeColorCandidates: activeColorCandidates.map((product) => ({
+      key: product.key,
+      colors: product.colorCandidates,
+    })),
+    orderableCandidates: activeOrderableCandidates.map((product) => ({
+      key: product.key,
+      variants: product.variantCandidates,
+      colors: product.colorCandidates,
+    })),
     blockedActiveProducts: activeBlockedProducts.map((product) => ({
       key: product.key,
       sourceBlockers: product.sourceBlockers,
       variantValidationIssues: product.variantValidationIssues,
       reviewFlags: product.reviewFlags,
-      colors: product.colorCandidates,
-    })),
-    activeColorCandidates: activeColorCandidates.map((product) => ({
-      key: product.key,
       colors: product.colorCandidates,
     })),
     activeProductsWithoutWebAudit,
@@ -281,6 +325,9 @@ console.log(
 console.log(`Blocked active products: ${output.summary.activeProductsBlocked}`);
 console.log(
   `Color candidates: ${output.summary.activeProductsWithColorCandidates} products / ${output.summary.activeColorCandidateCount} colors`,
+);
+console.log(
+  `Orderable candidates with both color and size/cup: ${output.summary.activeOrderableCandidateProductCount} products / ${output.summary.activeOrderableVariantCandidateCount} variants / ${output.summary.activeOrderableColorCandidateCount} colors`,
 );
 console.log("Import-ready products: 0 (explicit approval is still required)");
 console.log(`Output: ${outputPath}`);
