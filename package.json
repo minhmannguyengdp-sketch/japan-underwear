@@ -8,11 +8,14 @@
     "start": "node scripts/start-server.mjs",
     "lint": "eslint .",
     "catalog:manifest": "node scripts/catalog/build-local-manifest.mjs",
+    "r2:check": "node scripts/r2/check.mjs",
+    "catalog:r2:upload": "node scripts/catalog/upload-r2.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "latest",
     "dotenv": "latest",
     "drizzle-orm": "latest",
     "next": "latest",
