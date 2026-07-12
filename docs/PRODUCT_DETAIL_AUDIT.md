@@ -7,6 +7,7 @@
 - Variant đặt hàng được xác định bằng `product + size + cup`.
 - Với quần lót và quần gen, `cup` có thể rỗng; variant khi đó chỉ theo size.
 - Không tạo tích Descartes màu × size × cup.
+- Không nhân chéo danh sách size và cup khi website không cung cấp tổ hợp variation thật.
 - Không tự đoán màu từ ảnh, không tự đổi tên size/cup và không tự chọn giá khi nguồn mâu thuẫn.
 - Mô tả website chỉ là nguồn tham chiếu. Nội dung app phải rút thành một câu ngắn và 3–5 tính năng chính, không sao chép phần giao hàng, đổi trả hoặc nội dung quảng cáo dài.
 
@@ -37,7 +38,8 @@ Mỗi sản phẩm có:
 
 - `modelCandidates`: mã model đọc từ tên, SKU hoặc URL để đối chiếu identity chuẩn.
 - `colors`: danh sách màu tổng hợp từ thuộc tính trang và variation nguồn.
-- `variants`: các lựa chọn đã gộp theo size/cup, không chứa màu trong identity.
+- `availableSizes` và `availableCups`: lựa chọn hiển thị trên trang, dùng để audit chứ chưa mặc nhiên là tổ hợp mua được.
+- `variants`: các lựa chọn có bằng chứng đã gộp theo size/cup, không chứa màu trong identity.
 - `featureCandidates`: các đoạn mô tả có khả năng là tính năng sản phẩm.
 - `description`: mô tả gốc để đối chiếu, không import nguyên văn vào app.
 - `blockers`: các lỗi phải xử lý trước khi import.
@@ -65,6 +67,7 @@ Ví dụ variant sau khi gộp:
 Không import active variant khi có một trong các blocker:
 
 - `no-size-cup-variants`: không đọc được size/cup thật.
+- `unverified-size-cup-combinations`: trang có select size và cup riêng nhưng không có dữ liệu variation chứng minh tổ hợp hợp lệ.
 - `unmapped-source-variation-options`: website có variation nhưng không xác định được chiều size/cup.
 - `conflicting-prices-for-size-cup`: cùng size/cup có nhiều giá nguồn khác nhau.
 - `missing-variant-price`: variant không xác định được giá.
