@@ -73,9 +73,9 @@ export const products = catalogSchema.table(
     brandId: uuid("brand_id")
       .notNull()
       .references(() => brands.id, { onDelete: "restrict" }),
-    categoryId: uuid("category_id").references(() => categories.id, {
-      onDelete: "set null",
-    }),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "restrict" }),
     modelCode: text("model_code").notNull(),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
@@ -94,8 +94,9 @@ export const products = catalogSchema.table(
   },
   (table) => [
     uniqueIndex("products_slug_uidx").on(table.slug),
-    uniqueIndex("products_brand_model_uidx").on(
+    uniqueIndex("products_brand_category_model_uidx").on(
       table.brandId,
+      table.categoryId,
       table.modelCode,
     ),
     index("products_category_idx").on(table.categoryId),
