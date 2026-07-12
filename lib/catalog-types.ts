@@ -17,8 +17,9 @@ export type CatalogColor = {
 
 export type CatalogVariant = {
   id: string;
-  colorId: string;
   size: string;
+  cup: string | null;
+  label: string;
   sku: string | null;
   price: number;
 };
@@ -38,6 +39,8 @@ export type CatalogProduct = {
   images: CatalogImage[];
   colors: CatalogColor[];
   variants: CatalogVariant[];
+  orderable: boolean;
+  orderingBlocker: "missing-color" | "missing-size-cup" | null;
 };
 
 export type CatalogQuery = {
