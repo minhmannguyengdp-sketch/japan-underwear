@@ -1,9 +1,11 @@
 import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { createRequire } from "node:module";
 
 const cwd = process.cwd();
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const require = createRequire(import.meta.url);
 
 function run(command, args, label) {
   console.log(`\n=== ${label} ===`);
@@ -20,7 +22,36 @@ function run(command, args, label) {
   }
 }
 
-run(npmCommand, ["run", "db:migrate:drizzle"], "Drizzle migrations");
+function resolveDrizzleCli() {
+  const candidates = [
+    path.resolve(cwd, "node_modules", "drizzle-kit", "bin.cjs"),
+    path.resolve(cwd, "node_modules", "drizzle-kit", "dist", "bin.cjs"),
+  ];
+
+  try {
+    const packageJsonPath = require.resolve("drizzle-kit/package.json");
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+    const binValue =
+      typeof packageJson.bin === "string"
+        ? packageJson.bin
+        : packageJson.bin?.["drizzle-kit"] ?? Object.values(packageJson.bin ?? {})[0];
+    if (binValue) {
+      candidates.unshift(path.resolve(path.dirname(packageJsonPath), String(binValue)));
+    }
+  } catch {
+    // Fall back to the known local package layout below.
+  }
+
+  const cliPath = candidates.find((candidate) => existsSync(candidate));
+  if (!cliPath) {
+    throw new Error(
+      `Không tìm thấy drizzle-kit CLI. Đã kiểm tra: ${candidates.join(", ")}. Chạy npm install rồi thử lại.`,
+    );
+  }
+  return cliPath;
+}
+
+run(process.execPath, [resolveDrizzleCli(), "migrate"], "Drizzle migrations");
 run(
   process.execPath,
   [path.resolve(cwd, "scripts", "db", "apply-order-variant-identity.mjs")],
