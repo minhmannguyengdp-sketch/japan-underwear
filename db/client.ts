@@ -16,10 +16,19 @@ function readPoolMax() {
   return value;
 }
 
+function isLocalDatabase(connectionString: string) {
+  try {
+    const url = new URL(connectionString);
+    return url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  } catch {
+    return /@(localhost|127\.0\.0\.1)(:\d+)?\//i.test(connectionString);
+  }
+}
+
 export function getPool() {
   if (pool) return pool;
 
-  const connectionString = process.env.DATABASE_URL;
+  const connectionString = process.env.DATABASE_URL?.trim();
 
   if (!connectionString) {
     throw new Error("Thiếu DATABASE_URL. Cấu hình PostgreSQL trước khi gọi database.");
@@ -30,10 +39,9 @@ export function getPool() {
     max: readPoolMax(),
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
-    ssl:
-      process.env.NODE_ENV === "production"
-        ? { rejectUnauthorized: false }
-        : undefined,
+    ssl: isLocalDatabase(connectionString)
+      ? undefined
+      : { rejectUnauthorized: false },
   });
 
   return pool;
