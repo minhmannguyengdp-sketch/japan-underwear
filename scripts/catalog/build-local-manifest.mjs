@@ -262,7 +262,6 @@ function summarizeGroups(products, key) {
 
 function collectClassificationWarnings(product) {
   const warnings = [];
-  const modelRule = findModelRule(product.modelCode);
   const explicitCategories = [
     ...new Set(
       product.productPrefixes
@@ -288,36 +287,56 @@ function collectClassificationWarnings(product) {
   if (explicitCategories.length > 1) {
     warnings.push({
       code: "conflicting-product-prefixes",
-      message: `Tên thư mục chứa nhiều tiền tố nhóm khác nhau: ${product.productPrefixes.join(", ")}.`,
+      message: `Tên thư mục chứa nhiều tiền tố nhóm mâu thuẫn: ${product.productPrefixes.join(", ")}.`,
     });
   }
 
-  if (modelRule && product.brand !== "unclassified" && modelRule.brand !== product.brand) {
-    warnings.push({
-      code: "brand-model-prefix-conflict",
-      message: `Đầu mã ${modelRule.prefix} thường thuộc ${modelRule.brand}, nhưng thư mục được xếp vào ${product.brand}.`,
+  return warnings;
+}
+
+function collectClassificationExceptions(product) {
+  const exceptions = [];
+  const modelRule = findModelRule(product.modelCode);
+
+  if (!modelRule) return exceptions;
+
+  if (product.brand !== "unclassified" && modelRule.brand !== product.brand) {
+    exceptions.push({
+      code: "brand-model-prefix-exception",
+      message: `Đầu mã ${modelRule.prefix} thường thuộc ${modelRule.brand}, nhưng folder thực tế xác định là ${product.brand}.`,
       expected: modelRule.brand,
       actual: product.brand,
     });
   }
 
-  const quanGenIsAuthoritative = product.productPrefixes.includes("QG");
-
   if (
-    modelRule &&
-    !quanGenIsAuthoritative &&
     product.category !== "unclassified" &&
     modelRule.category !== product.category
   ) {
-    warnings.push({
-      code: "category-model-prefix-conflict",
-      message: `Đầu mã ${modelRule.prefix} thường thuộc ${modelRule.category}, nhưng thư mục được xếp vào ${product.category}.`,
+    exceptions.push({
+      code: "category-model-prefix-exception",
+      message: `Đầu mã ${modelRule.prefix} thường thuộc ${modelRule.category}, nhưng folder thực tế xác định là ${product.category}.`,
       expected: modelRule.category,
       actual: product.category,
     });
   }
 
-  return warnings;
+  return exceptions;
+}
+
+function buildReviewEntry(product, reasons) {
+  return {
+    brand: product.brand,
+    category: product.category,
+    modelCode: product.modelCode,
+    reasons,
+    productPrefixes: product.productPrefixes,
+    modelSources: product.modelSources,
+    brandSources: product.brandSources,
+    categorySources: product.categorySources,
+    folders: product.folders,
+    imageCount: product.images.length,
+  };
 }
 
 const sourceReports = [];
@@ -434,21 +453,18 @@ const classificationWarnings = products
     reasons: collectClassificationWarnings(product),
   }))
   .filter((entry) => entry.reasons.length > 0)
-  .map(({ product, reasons }) => ({
-    brand: product.brand,
-    category: product.category,
-    modelCode: product.modelCode,
-    reasons,
-    productPrefixes: product.productPrefixes,
-    modelSources: product.modelSources,
-    brandSources: product.brandSources,
-    categorySources: product.categorySources,
-    folders: product.folders,
-    imageCount: product.images.length,
-  }));
+  .map(({ product, reasons }) => buildReviewEntry(product, reasons));
+
+const classificationExceptions = products
+  .map((product) => ({
+    product,
+    reasons: collectClassificationExceptions(product),
+  }))
+  .filter((entry) => entry.reasons.length > 0)
+  .map(({ product, reasons }) => buildReviewEntry(product, reasons));
 
 const manifest = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   generatedAt: new Date().toISOString(),
   ttRoot,
   outputFile,
@@ -460,8 +476,8 @@ const manifest = {
       "AL/QL/QG prefix determines category and model",
       "path/source folder determines brand when explicit",
       "QL source folder determines quan-lot unless QG is present",
-      "model prefix determines remaining brand/category",
-      "bare four-digit model is valid and does not create a warning by itself",
+      "model prefix is fallback and advisory only",
+      "bare four-digit model is valid when it is not a year or image size",
     ],
   },
   priceFile: {
@@ -478,6 +494,7 @@ const manifest = {
     ),
     unmatchedImageCount: unmatchedFiles.length,
     classificationWarningCount: classificationWarnings.length,
+    classificationExceptionCount: classificationExceptions.length,
     byBrand: summarizeGroups(products, "brand"),
     byCategory: summarizeGroups(products, "category"),
   },
@@ -487,6 +504,7 @@ const manifest = {
     left.relativeToTtRoot.localeCompare(right.relativeToTtRoot, "vi"),
   ),
   classificationWarnings,
+  classificationExceptions,
 };
 
 await fs.mkdir(path.dirname(outputFile), { recursive: true });
@@ -497,7 +515,8 @@ console.log(
   `Model: ${manifest.summary.productGroupCount} | ` +
     `Ảnh khớp: ${manifest.summary.matchedImageCount} | ` +
     `Ảnh chưa khớp: ${manifest.summary.unmatchedImageCount} | ` +
-    `Cảnh báo phân loại: ${manifest.summary.classificationWarningCount}`,
+    `Cảnh báo thật: ${manifest.summary.classificationWarningCount} | ` +
+    `Ngoại lệ quy tắc: ${manifest.summary.classificationExceptionCount}`,
 );
 console.log("Theo thương hiệu:", manifest.summary.byBrand);
 console.log("Theo nhóm:", manifest.summary.byCategory);
