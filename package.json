@@ -8,6 +8,7 @@
     "start": "node scripts/start-server.mjs",
     "lint": "eslint .",
     "catalog:manifest": "node scripts/catalog/build-local-manifest.mjs",
+    "r2:diagnose": "node scripts/r2/diagnose.mjs",
     "r2:check": "node scripts/r2/check.mjs",
     "catalog:r2:upload": "node scripts/catalog/upload-r2.mjs",
     "db:generate": "drizzle-kit generate",
