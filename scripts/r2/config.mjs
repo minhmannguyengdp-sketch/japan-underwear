@@ -10,28 +10,25 @@ const ACCESS_KEY_ID_PATTERN = /^[a-f0-9]{32}$/i;
 const SECRET_ACCESS_KEY_PATTERN = /^[a-f0-9]{64}$/i;
 const R2_JURISDICTIONS = new Set(["default", "eu", "fedramp"]);
 
+// CLOUDFLARE_R2_* is the canonical namespace for this project.
+// R2_* remains a fallback only for backward compatibility.
 const ENV_ALIASES = {
-  accountId: ["R2_ACCOUNT_ID", "CLOUDFLARE_R2_ACCOUNT_ID"],
-  bucket: ["R2_BUCKET", "CLOUDFLARE_R2_BUCKET"],
-  accessKeyId: [
-    "R2_ACCESS_KEY_ID",
-    "CLOUDFLARE_R2_ACCESS_KEY_ID",
-    "CLOUDFLARE_R2_USER_ACCESS_KEY_ID",
-  ],
+  accountId: ["CLOUDFLARE_R2_ACCOUNT_ID", "R2_ACCOUNT_ID"],
+  bucket: ["CLOUDFLARE_R2_BUCKET", "R2_BUCKET"],
+  accessKeyId: ["CLOUDFLARE_R2_ACCESS_KEY_ID", "R2_ACCESS_KEY_ID"],
   secretAccessKey: [
-    "R2_SECRET_ACCESS_KEY",
     "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
-    "CLOUDFLARE_R2_USER_SECRET_ACCESS_KEY",
+    "R2_SECRET_ACCESS_KEY",
   ],
   publicBaseUrl: [
-    "R2_PUBLIC_BASE_URL",
     "CLOUDFLARE_R2_CUSTOM_DOMAIN",
     "CLOUDFLARE_R2_PUBLIC_DEV_URL",
+    "R2_PUBLIC_BASE_URL",
   ],
   endpoint: [
-    "R2_ENDPOINT",
     "CLOUDFLARE_R2_ENDPOINT",
     "CLOUDFLARE_R2_S3_API_URL",
+    "R2_ENDPOINT",
   ],
 };
 
@@ -79,6 +76,8 @@ function normalizeEndpoint(rawEndpoint, source) {
     throw new Error(`${source} bắt buộc dùng HTTPS.`);
   }
 
+  // CLOUDFLARE_R2_S3_API_URL may include /<bucket>.
+  // The AWS SDK endpoint must be the origin only.
   return parsed.origin;
 }
 
@@ -98,7 +97,7 @@ function resolveEndpoint(accountId) {
 
   if (!R2_JURISDICTIONS.has(jurisdiction)) {
     throw new Error(
-      "R2_JURISDICTION chỉ nhận default, eu hoặc fedramp. Hoặc đặt R2_ENDPOINT/CLOUDFLARE_R2_ENDPOINT.",
+      "R2_JURISDICTION chỉ nhận default, eu hoặc fedramp. Hoặc đặt CLOUDFLARE_R2_ENDPOINT/R2_ENDPOINT.",
     );
   }
 
