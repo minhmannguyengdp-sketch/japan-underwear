@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   pgEnum,
+  pgSchema,
   pgTable,
   text,
   timestamp,
@@ -20,7 +21,9 @@ export const importStatus = pgEnum("catalog_import_status", [
   "failed",
 ]);
 
-export const brands = pgTable(
+const catalogSchema = pgSchema("japan_underwear");
+
+export const brands = catalogSchema.table(
   "brands",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -38,7 +41,7 @@ export const brands = pgTable(
   (table) => [uniqueIndex("brands_slug_uidx").on(table.slug)],
 );
 
-export const categories = pgTable(
+export const categories = catalogSchema.table(
   "categories",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -65,7 +68,7 @@ export const categories = pgTable(
   ],
 );
 
-export const products = pgTable(
+export const products = catalogSchema.table(
   "products",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -102,7 +105,7 @@ export const products = pgTable(
   ],
 );
 
-export const productColors = pgTable(
+export const productColors = catalogSchema.table(
   "product_colors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -124,7 +127,7 @@ export const productColors = pgTable(
   ],
 );
 
-export const productVariants = pgTable(
+export const productVariants = catalogSchema.table(
   "product_variants",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -159,7 +162,7 @@ export const productVariants = pgTable(
   ],
 );
 
-export const productImages = pgTable(
+export const productImages = catalogSchema.table(
   "product_images",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -188,7 +191,7 @@ export const productImages = pgTable(
   ],
 );
 
-export const catalogImportRuns = pgTable(
+export const catalogImportRuns = catalogSchema.table(
   "catalog_import_runs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
