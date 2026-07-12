@@ -15,6 +15,12 @@ const canonicalBuilderPath = path.resolve(
   "catalog",
   "build-price-authoritative-manifest.mjs",
 );
+const duplicateResolverPath = path.resolve(
+  cwd,
+  "scripts",
+  "catalog",
+  "resolve-content-duplicates.mjs",
+);
 const rawAuditPath = path.resolve(cwd, "scripts", "catalog", "audit-local-catalog.mjs");
 const auditJsonPath = path.resolve(cwd, "data", "local", "catalog-audit.json");
 const auditCsvPath = path.resolve(cwd, "data", "local", "catalog-audit-issues.csv");
@@ -56,6 +62,7 @@ console.log("Catalog active = model có trong bảng giá và có ảnh, cộng 
 console.log("Model bảng giá không có ảnh được bỏ qua vì có thể đã ngừng mẫu, trừ ngoại lệ đã giữ lại.\n");
 
 runNode("Canonical manifest", canonicalBuilderPath);
+runNode("Content duplicate resolver", duplicateResolverPath);
 runNode("Raw catalog audit", rawAuditPath, ["--no-refresh"]);
 
 const [audit, manifest] = await Promise.all([
@@ -123,7 +130,7 @@ const blockerIssues = issues.filter((issue) => issue.severity === "critical");
 
 const authoritativeAudit = {
   ...audit,
-  schemaVersion: 4,
+  schemaVersion: 5,
   businessRule: {
     identityAuthority: "price-list",
     activeCatalog:
@@ -132,6 +139,8 @@ const authoritativeAudit = {
     retainedWithoutImageDisposition: "active-owner-reviewed",
     imageOnlyDisposition: "excluded-not-in-current-price-list",
     pendingR2SyncDisposition: "warning-not-identity-blocker",
+    contentDuplicateDisposition:
+      "dedupe before audit; stronger independent-source consensus may resolve cross-product copies",
   },
   summary: {
     ...audit.summary,
@@ -141,6 +150,15 @@ const authoritativeAudit = {
     priceProductsOmittedNoImages: omittedNoImage.length,
     imageProductsExcludedNotInPriceList: excludedImageOnly.length,
     unresolvedImageProducts: unresolved.length,
+    contentDuplicateReferencesRemoved: Number(
+      manifest.summary?.contentDuplicateReferencesRemoved ?? 0,
+    ),
+    contentDuplicateCrossProductAutoResolved: Number(
+      manifest.summary?.autoResolvedCrossProductGroups ?? 0,
+    ),
+    contentDuplicateCrossProductUnresolved: Number(
+      manifest.summary?.unresolvedCrossProductGroups ?? 0,
+    ),
     r2SyncRequiredObjects,
     blockerCriticalIssues: blockerIssues.length,
     issues: severityCounts,
@@ -152,6 +170,7 @@ const authoritativeAudit = {
     excludedImageProductsNotInPriceList: excludedImageOnly,
     unresolvedImageProducts: unresolved,
   },
+  contentDedupe: manifest.contentDedupe ?? null,
   blockers: blockerIssues,
   issues,
 };
@@ -198,8 +217,9 @@ const markdown = [
   `- Có trong bảng giá nhưng không có ảnh: **${omittedNoImage.length} model — bỏ qua, có thể đã ngừng mẫu**`,
   `- Có ảnh nhưng không có trong bảng giá hiện tại: **${excludedImageOnly.length} model — loại khỏi catalog active**`,
   `- Identity còn mơ hồ: **${unresolved.length} model**`,
-  `- Trùng ảnh chạm QL: **${authoritativeAudit.summary.duplicateGroupsTouchingQl} nhóm**`,
-  `- Trùng chéo nhiều sản phẩm: **${authoritativeAudit.summary.duplicateCrossProductGroups} nhóm**`,
+  `- Tham chiếu ảnh trùng đã bỏ: **${authoritativeAudit.summary.contentDuplicateReferencesRemoved}**`,
+  `- Trùng chéo tự giải quyết bằng đồng thuận nguồn: **${authoritativeAudit.summary.contentDuplicateCrossProductAutoResolved} nhóm**`,
+  `- Trùng chéo còn mơ hồ: **${authoritativeAudit.summary.contentDuplicateCrossProductUnresolved} nhóm**`,
   `- R2 cần đồng bộ lại theo manifest canonical: **${r2SyncRequiredObjects} object — không phải lỗi identity**`,
   `- Blocker thật: **${blockerIssues.length} critical**`,
   `- Issues còn hiệu lực: **${severityCounts.critical} critical / ${severityCounts.warning} warning / ${severityCounts.info} info**`,
@@ -218,6 +238,7 @@ const markdown = [
   "- Không tạo lỗi cho model bảng giá không có ảnh, trừ khi chủ catalog xác nhận phải giữ.",
   "- Ba model quần lót 9501, 9514 và 9108 được giữ active theo xác nhận, nhưng không tự dùng ảnh áo ngực cùng mã.",
   "- Không đưa model chỉ có ảnh nhưng không có trong bảng giá hiện tại vào catalog active.",
+  "- Ảnh trùng nội dung được dedupe trước audit; chỉ tự chọn model khi có đồng thuận nguồn độc lập mạnh hơn.",
   "- R2 report cũ sau khi canonical remap chỉ là trạng thái cần đồng bộ, không phải lỗi identity.",
   "- Chỉ lỗi identity/trùng ảnh chéo còn hiệu lực mới chặn import.",
   "",
@@ -239,6 +260,11 @@ console.log(
   `Loại model có ảnh nhưng không có trong bảng giá: ${excludedImageOnly.length}.`,
 );
 console.log(`Identity còn mơ hồ: ${unresolved.length}.`);
+console.log(
+  `Dedupe ảnh: bỏ ${authoritativeAudit.summary.contentDuplicateReferencesRemoved} tham chiếu; ` +
+    `tự giải quyết ${authoritativeAudit.summary.contentDuplicateCrossProductAutoResolved} nhóm; ` +
+    `còn mơ hồ ${authoritativeAudit.summary.contentDuplicateCrossProductUnresolved} nhóm.`,
+);
 console.log(`R2 cần đồng bộ lại: ${r2SyncRequiredObjects} object (không chặn identity).`);
 console.log(`Blocker thật: ${blockerIssues.length} critical.`);
 console.log(
