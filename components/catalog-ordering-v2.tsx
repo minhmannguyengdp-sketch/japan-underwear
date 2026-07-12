@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 
 import type { CatalogProduct } from "@/lib/catalog-types";
 import type { CreatedOrder, ServerCart } from "@/lib/order-types";
