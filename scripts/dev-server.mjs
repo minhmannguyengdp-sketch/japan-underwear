@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -20,6 +20,24 @@ const nextBin = path.join(process.cwd(), "node_modules", "next", "dist", "bin", 
 if (!existsSync(nextBin)) {
   console.error("Chưa cài dependencies. Chạy npm install trước.");
   process.exit(1);
+}
+
+const ensureCatalogScript = path.join(
+  process.cwd(),
+  "scripts",
+  "catalog",
+  "ensure-local-catalog.mjs",
+);
+const ensureCatalog = spawnSync(process.execPath, [ensureCatalogScript], {
+  cwd: process.cwd(),
+  env: process.env,
+  stdio: "inherit",
+  shell: false,
+});
+
+if (ensureCatalog.error) throw ensureCatalog.error;
+if (ensureCatalog.status !== 0) {
+  process.exit(ensureCatalog.status ?? 1);
 }
 
 console.log(`Khởi động Tuấn Thủy tại http://localhost:${port}`);
