@@ -11,6 +11,9 @@ const requiredNames = [
   "R2_ACCESS_KEY_ID",
   "R2_SECRET_ACCESS_KEY",
 ];
+const ACCOUNT_ID_PATTERN = /^[a-f0-9]{32}$/i;
+const ACCESS_KEY_ID_PATTERN = /^[a-f0-9]{32}$/i;
+const SECRET_ACCESS_KEY_PATTERN = /^[a-f0-9]{64}$/i;
 
 function fingerprint(value) {
   return createHash("sha256").update(value).digest("hex").slice(0, 12);
@@ -78,7 +81,7 @@ for (const name of requiredNames) {
 }
 
 const accountId = (process.env.R2_ACCOUNT_ID || parsed.R2_ACCOUNT_ID || "").trim();
-if (accountId && !/^[a-f0-9]{32}$/i.test(accountId)) {
+if (accountId && !ACCOUNT_ID_PATTERN.test(accountId)) {
   errors.push(
     "R2_ACCOUNT_ID không phải chuỗi hex 32 ký tự. Không dùng URL, Zone ID hoặc API token.",
   );
@@ -94,6 +97,18 @@ const secretAccessKey = (
   parsed.R2_SECRET_ACCESS_KEY ||
   ""
 ).trim();
+
+if (accessKeyId && !ACCESS_KEY_ID_PATTERN.test(accessKeyId)) {
+  errors.push(
+    `R2_ACCESS_KEY_ID phải gồm đúng 32 ký tự hex; hiện đang có ${accessKeyId.length} ký tự.`,
+  );
+}
+
+if (secretAccessKey && !SECRET_ACCESS_KEY_PATTERN.test(secretAccessKey)) {
+  errors.push(
+    `R2_SECRET_ACCESS_KEY phải gồm đúng 64 ký tự hex; hiện đang có ${secretAccessKey.length} ký tự. Hãy copy lại Secret Access Key từ đúng lần tạo token.`,
+  );
+}
 
 console.log(`Env file: ${envFile}`);
 console.log(`Account ID: ${accountId ? `${accountId.slice(0, 6)}…${accountId.slice(-4)}` : "missing"}`);
