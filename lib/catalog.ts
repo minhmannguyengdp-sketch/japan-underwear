@@ -25,6 +25,10 @@ function normalizeLimit(value: number | undefined) {
   return Math.min(Number(value), 200);
 }
 
+function variantLabel(size: string, cup: string | null) {
+  return cup ? `${size}${cup}` : size;
+}
+
 export async function listCatalogProducts(
   query: CatalogQuery = {},
 ): Promise<CatalogProduct[]> {
@@ -89,13 +93,7 @@ export async function listCatalogProducts(
   const [imageResult, colorResult, variantResult] = await Promise.all([
     pool.query(
       `
-        SELECT
-          id,
-          product_id,
-          r2_key,
-          alt_text,
-          sort_order,
-          is_cover
+        SELECT id, product_id, r2_key, alt_text, sort_order, is_cover
         FROM japan_underwear.product_images
         WHERE product_id = ANY($1::uuid[])
         ORDER BY product_id, is_cover DESC, sort_order ASC, r2_key ASC
@@ -104,13 +102,7 @@ export async function listCatalogProducts(
     ),
     pool.query(
       `
-        SELECT
-          id,
-          product_id,
-          code,
-          name,
-          swatch,
-          sort_order
+        SELECT id, product_id, code, name, swatch, sort_order
         FROM japan_underwear.product_colors
         WHERE product_id = ANY($1::uuid[])
           AND is_active = true
@@ -120,17 +112,11 @@ export async function listCatalogProducts(
     ),
     pool.query(
       `
-        SELECT
-          id,
-          product_id,
-          color_id,
-          size_code,
-          sku,
-          price_override
+        SELECT id, product_id, size_code, cup_code, sku, price_override
         FROM japan_underwear.product_variants
         WHERE product_id = ANY($1::uuid[])
           AND is_active = true
-        ORDER BY product_id, color_id, size_code ASC
+        ORDER BY product_id, size_code ASC, cup_code ASC NULLS FIRST
       `,
       [productIds],
     ),
@@ -173,10 +159,13 @@ export async function listCatalogProducts(
   for (const row of variantResult.rows) {
     const productId = String(row.product_id);
     const variants = variantsByProduct.get(productId) ?? [];
+    const size = String(row.size_code);
+    const cup = row.cup_code ? String(row.cup_code) : null;
     variants.push({
       id: String(row.id),
-      colorId: String(row.color_id),
-      size: String(row.size_code),
+      size,
+      cup,
+      label: variantLabel(size, cup),
       sku: row.sku ? String(row.sku) : null,
       price:
         row.price_override === null
@@ -188,6 +177,15 @@ export async function listCatalogProducts(
 
   return productResult.rows.map((row) => {
     const id = String(row.id);
+    const colors = colorsByProduct.get(id) ?? [];
+    const variants = variantsByProduct.get(id) ?? [];
+    const orderable = colors.length > 0 && variants.length > 0;
+    const orderingBlocker = orderable
+      ? null
+      : colors.length === 0
+        ? "missing-color"
+        : "missing-size-cup";
+
     return {
       id,
       brand: String(row.brand_name),
@@ -197,14 +195,14 @@ export async function listCatalogProducts(
       code: String(row.model_code),
       name: String(row.name),
       slug: String(row.slug),
-      description: row.short_description
-        ? String(row.short_description)
-        : null,
+      description: row.short_description ? String(row.short_description) : null,
       price: Number(row.base_price),
       currency: String(row.currency),
       images: imagesByProduct.get(id) ?? [],
-      colors: colorsByProduct.get(id) ?? [],
-      variants: variantsByProduct.get(id) ?? [],
+      colors,
+      variants,
+      orderable,
+      orderingBlocker,
     } satisfies CatalogProduct;
   });
 }
