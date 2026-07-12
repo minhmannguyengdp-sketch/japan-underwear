@@ -18,6 +18,9 @@ const CATEGORY_NAMES = {
   "quan-gen": "Quần gen",
 };
 
+const CATEGORY_ORDER = ["ao-nguc", "quan-lot", "quan-gen"];
+const LOCAL_SOURCE_PREFIX = "local:";
+
 function parseArgs(argv) {
   const options = {
     apply: false,
@@ -45,12 +48,13 @@ function productKey(product) {
   return `${product.brand}:${product.category}:${product.modelCode}`;
 }
 
-function businessKey(product) {
-  return `${product.brand}:${product.modelCode}`;
-}
-
 function isLocalDatabase(connectionString) {
-  return /@(localhost|127\.0\.0\.1)(:\d+)?\//i.test(connectionString);
+  try {
+    const url = new URL(connectionString);
+    return url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  } catch {
+    return /@(localhost|127\.0\.0\.1)(:\d+)?\//i.test(connectionString);
+  }
 }
 
 async function readJson(filePath, label) {
@@ -85,22 +89,17 @@ function validateSources(manifest, report, allowWarnings) {
     );
   }
 
-  const seenProductKeys = new Set();
-  const seenBusinessKeys = new Set();
+  const manifestProductKeys = new Set();
   for (const product of manifest.products) {
+    if (!product.brand || !product.category || !product.modelCode) {
+      throw new Error("Manifest có product thiếu brand, category hoặc modelCode.");
+    }
+
     const key = productKey(product);
-    if (seenProductKeys.has(key)) {
+    if (manifestProductKeys.has(key)) {
       throw new Error(`Manifest trùng product key: ${key}.`);
     }
-    seenProductKeys.add(key);
-
-    const uniqueBusinessKey = businessKey(product);
-    if (seenBusinessKeys.has(uniqueBusinessKey)) {
-      throw new Error(
-        `Một brand + model xuất hiện ở nhiều category, không phù hợp unique key hiện tại: ${uniqueBusinessKey}.`,
-      );
-    }
-    seenBusinessKeys.add(uniqueBusinessKey);
+    manifestProductKeys.add(key);
   }
 
   if (report.mode !== "apply") {
@@ -128,27 +127,41 @@ function validateSources(manifest, report, allowWarnings) {
   const seenR2Keys = new Set();
 
   for (const object of report.objects) {
-    if (!object.key || !object.publicUrl || !object.relativeToTtRoot) {
-      throw new Error("R2 report có object thiếu key, publicUrl hoặc relativeToTtRoot.");
+    if (
+      !object.brand ||
+      !object.category ||
+      !object.modelCode ||
+      !object.key ||
+      !object.publicUrl ||
+      !object.relativeToTtRoot
+    ) {
+      throw new Error(
+        "R2 report có object thiếu brand, category, modelCode, key, publicUrl hoặc relativeToTtRoot.",
+      );
     }
+
     if (seenR2Keys.has(object.key)) {
       throw new Error(`R2 report trùng key: ${object.key}.`);
     }
     seenR2Keys.add(object.key);
 
     const key = productKey(object);
+    if (!manifestProductKeys.has(key)) {
+      throw new Error(`R2 report có object không thuộc manifest hiện tại: ${key}.`);
+    }
+
     const current = reportObjectsByProduct.get(key) ?? [];
     current.push(object);
     reportObjectsByProduct.set(key, current);
   }
 
   for (const product of manifest.products) {
-    const images = reportObjectsByProduct.get(productKey(product)) ?? [];
+    const key = productKey(product);
+    const images = reportObjectsByProduct.get(key) ?? [];
     if (images.length === 0) {
-      throw new Error(
-        `Model ${productKey(product)} không có object R2 trong report.`,
-      );
+      throw new Error(`Model ${key} không có object R2 trong report.`);
     }
+
     images.sort(
       (left, right) =>
         Number(left.sortOrder ?? 0) - Number(right.sortOrder ?? 0) ||
@@ -216,16 +229,28 @@ const client = new Client({
 });
 
 let importRunId;
+let transactionStarted = false;
 
 try {
   await client.connect();
 
   const schemaCheck = await client.query(
-    "SELECT to_regclass('japan_underwear.products') AS products_table",
+    `
+      SELECT
+        to_regclass('japan_underwear.products') AS products_table,
+        to_regclass('japan_underwear.products_brand_category_model_uidx') AS identity_index
+    `,
   );
+
   if (!schemaCheck.rows[0]?.products_table) {
     throw new Error(
       "Không tìm thấy japan_underwear.products. Chạy migration database trước.",
+    );
+  }
+
+  if (!schemaCheck.rows[0]?.identity_index) {
+    throw new Error(
+      "Database chưa có products_brand_category_model_uidx. Chạy npm run db:migrate trước khi import.",
     );
   }
 
@@ -249,13 +274,15 @@ try {
   importRunId = runResult.rows[0].id;
 
   await client.query("BEGIN");
+  transactionStarted = true;
 
   const brandIds = new Map();
   const categoryIds = new Map();
   const productIds = [];
   const importedR2Keys = [];
 
-  for (const brandSlug of [...new Set(manifest.products.map((item) => item.brand))]) {
+  const brandSlugs = [...new Set(manifest.products.map((item) => item.brand))];
+  for (const brandSlug of brandSlugs) {
     const brandName = BRAND_NAMES[brandSlug] ?? titleFromSlug(brandSlug);
     const brandResult = await client.query(
       `
@@ -273,10 +300,14 @@ try {
     brandIds.set(brandSlug, brandResult.rows[0].id);
   }
 
-  for (const categorySlug of [
+  const categorySlugs = [
     ...new Set(manifest.products.map((item) => item.category)),
-  ]) {
+  ];
+  for (const categorySlug of categorySlugs) {
     const categoryName = CATEGORY_NAMES[categorySlug] ?? titleFromSlug(categorySlug);
+    const configuredOrder = CATEGORY_ORDER.indexOf(categorySlug);
+    const sortOrder = configuredOrder === -1 ? 100 : configuredOrder + 1;
+
     const categoryResult = await client.query(
       `
         INSERT INTO japan_underwear.categories
@@ -289,11 +320,7 @@ try {
           updated_at = now()
         RETURNING id
       `,
-      [
-        categoryName,
-        categorySlug,
-        ["ao-nguc", "quan-lot", "quan-gen"].indexOf(categorySlug) + 1,
-      ],
+      [categoryName, categorySlug, sortOrder],
     );
     categoryIds.set(categorySlug, categoryResult.rows[0].id);
   }
@@ -301,12 +328,17 @@ try {
   for (const product of manifest.products) {
     const brandId = brandIds.get(product.brand);
     const categoryId = categoryIds.get(product.category);
+
+    if (!brandId || !categoryId) {
+      throw new Error(`Không tạo được brand/category cho ${productKey(product)}.`);
+    }
+
     const brandName = BRAND_NAMES[product.brand] ?? titleFromSlug(product.brand);
     const categoryName =
       CATEGORY_NAMES[product.category] ?? titleFromSlug(product.category);
-    const slug = `${product.brand}-${product.modelCode}`;
+    const slug = `${product.brand}-${product.category}-${product.modelCode}`;
     const name = `${categoryName} ${brandName} ${product.modelCode}`;
-    const sourceProductId = `${product.brand}:${product.modelCode}`;
+    const sourceProductId = `${LOCAL_SOURCE_PREFIX}${product.brand}:${product.category}:${product.modelCode}`;
 
     const productResult = await client.query(
       `
@@ -314,8 +346,7 @@ try {
           (brand_id, category_id, model_code, name, slug, short_description,
            base_price, currency, source_product_id, is_active)
         VALUES ($1, $2, $3, $4, $5, $6, 0, 'VND', $7, true)
-        ON CONFLICT (brand_id, model_code) DO UPDATE SET
-          category_id = EXCLUDED.category_id,
+        ON CONFLICT (brand_id, category_id, model_code) DO UPDATE SET
           name = EXCLUDED.name,
           slug = EXCLUDED.slug,
           source_product_id = EXCLUDED.source_product_id,
@@ -343,6 +374,8 @@ try {
     );
 
     const images = reportObjectsByProduct.get(productKey(product));
+    const currentKeys = [];
+
     for (let index = 0; index < images.length; index += 1) {
       const image = images[index];
       const sourceFilename = path.posix.basename(
@@ -366,9 +399,31 @@ try {
         `,
         [productId, image.key, sourceFilename, altText, sortOrder, isCover],
       );
+
+      currentKeys.push(image.key);
       importedR2Keys.push(image.key);
     }
+
+    await client.query(
+      `
+        DELETE FROM japan_underwear.product_images
+        WHERE product_id = $1
+          AND NOT (r2_key = ANY($2::text[]))
+      `,
+      [productId, currentKeys],
+    );
   }
+
+  await client.query(
+    `
+      UPDATE japan_underwear.products
+      SET is_active = false,
+          updated_at = now()
+      WHERE source_product_id LIKE 'local:%'
+        AND NOT (id = ANY($1::uuid[]))
+    `,
+    [productIds],
+  );
 
   const productCountResult = await client.query(
     `
@@ -378,6 +433,7 @@ try {
     `,
     [productIds],
   );
+
   const imageCountResult = await client.query(
     `
       SELECT COUNT(*)::integer AS count
@@ -387,14 +443,26 @@ try {
     [importedR2Keys],
   );
 
+  const activeLocalCountResult = await client.query(
+    `
+      SELECT COUNT(*)::integer AS count
+      FROM japan_underwear.products
+      WHERE source_product_id LIKE 'local:%'
+        AND is_active = true
+    `,
+  );
+
   const verifiedProducts = Number(productCountResult.rows[0].count);
   const verifiedImages = Number(imageCountResult.rows[0].count);
+  const activeLocalProducts = Number(activeLocalCountResult.rows[0].count);
+
   if (
     verifiedProducts !== manifest.products.length ||
+    activeLocalProducts !== manifest.products.length ||
     verifiedImages !== plannedImageCount
   ) {
     throw new Error(
-      `Hậu kiểm không khớp: products=${verifiedProducts}/${manifest.products.length}, images=${verifiedImages}/${plannedImageCount}.`,
+      `Hậu kiểm không khớp: products=${verifiedProducts}/${manifest.products.length}, active=${activeLocalProducts}/${manifest.products.length}, images=${verifiedImages}/${plannedImageCount}.`,
     );
   }
 
@@ -419,21 +487,20 @@ try {
   );
 
   await client.query("COMMIT");
+  transactionStarted = false;
 
   console.log("Catalog PostgreSQL import OK.");
   console.log(`Products: ${verifiedProducts}.`);
   console.log(`Images: ${verifiedImages}.`);
   console.log(`Brands: ${brandIds.size}. Categories: ${categoryIds.size}.`);
 } catch (error) {
-  try {
-    await client.query("ROLLBACK");
-  } catch {
-    // Không che lỗi gốc nếu transaction chưa bắt đầu hoặc connection đã đóng.
+  if (transactionStarted) {
+    await client.query("ROLLBACK").catch(() => undefined);
   }
 
   if (importRunId) {
-    try {
-      await client.query(
+    await client
+      .query(
         `
           UPDATE japan_underwear.catalog_import_runs
           SET status = 'failed', error_message = $2, finished_at = now()
@@ -443,10 +510,8 @@ try {
           importRunId,
           error instanceof Error ? error.message.slice(0, 4000) : String(error),
         ],
-      );
-    } catch {
-      // Không che lỗi import gốc.
-    }
+      )
+      .catch(() => undefined);
   }
 
   throw error;
