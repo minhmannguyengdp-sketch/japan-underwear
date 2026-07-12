@@ -1,7 +1,7 @@
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import { config as loadEnv } from "dotenv";
 import { Client } from "pg";
 
@@ -35,22 +35,21 @@ async function readJson(filePath, label) {
   }
 }
 
-function runNpm(script, extraArgs = []) {
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-  const result = spawnSync(
-    npmCommand,
-    ["run", script, ...extraArgs],
-    {
-      cwd,
-      env: process.env,
-      stdio: "inherit",
-      shell: false,
-    },
-  );
+function runNodeStep(label, entryPath, args = []) {
+  if (!existsSync(entryPath)) {
+    throw new Error(`Không tìm thấy ${label}: ${entryPath}`);
+  }
+
+  const result = spawnSync(process.execPath, [entryPath, ...args], {
+    cwd,
+    env: process.env,
+    stdio: "inherit",
+    shell: false,
+  });
 
   if (result.error) throw result.error;
   if (result.status !== 0) {
-    throw new Error(`Bước npm run ${script} thất bại với mã ${result.status}.`);
+    throw new Error(`${label} thất bại với mã ${result.status}.`);
   }
 }
 
@@ -62,6 +61,20 @@ function isLocalDatabase(value) {
     return /@(localhost|127\.0\.0\.1)(:\d+)?\//i.test(value);
   }
 }
+
+const drizzleKitPath = path.resolve(cwd, "node_modules", "drizzle-kit", "bin.cjs");
+const verifyScriptPath = path.resolve(
+  cwd,
+  "scripts",
+  "db",
+  "verify-catalog-migration.mjs",
+);
+const importerScriptPath = path.resolve(
+  cwd,
+  "scripts",
+  "catalog",
+  "import-postgres.mjs",
+);
 
 const [manifest, report] = await Promise.all([
   readJson(manifestPath, "catalog manifest"),
@@ -84,13 +97,13 @@ console.log(`Expected products: ${expectedProducts}`);
 console.log(`Expected images: ${expectedImages}`);
 
 console.log("\n[1/4] Chạy migration...");
-runNpm("db:migrate");
+runNodeStep("Drizzle migration", drizzleKitPath, ["migrate"]);
 
 console.log("\n[2/4] Kiểm tra schema...");
-runNpm("db:verify");
+runNodeStep("Catalog DB verification", verifyScriptPath);
 
 console.log("\n[3/4] Import catalog...");
-runNpm("catalog:db:import", ["--", "--apply"]);
+runNodeStep("Catalog PostgreSQL import", importerScriptPath, ["--apply"]);
 
 console.log("\n[4/4] Hậu kiểm dữ liệu...");
 const client = new Client({
@@ -138,7 +151,6 @@ try {
 
   console.log("\nCatalog bootstrap OK.");
   console.log(`Products: ${products}. Images: ${images}.`);
-  console.log("Bây giờ chạy: npm run dev");
 } finally {
   await client.end().catch(() => undefined);
 }
