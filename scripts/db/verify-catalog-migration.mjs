@@ -1,4 +1,12 @@
+import path from "node:path";
+import process from "node:process";
+
+import { config as loadEnv } from "dotenv";
 import { Client } from "pg";
+
+const cwd = process.cwd();
+loadEnv({ path: path.resolve(cwd, ".env.local"), override: true, quiet: true });
+loadEnv({ path: path.resolve(cwd, ".env"), override: false, quiet: true });
 
 const EXPECTED_TABLES = [
   "brands",
@@ -19,7 +27,7 @@ const EXPECTED_MIGRATIONS = [
 const connectionString = process.env.DATABASE_URL?.trim();
 
 if (!connectionString) {
-  console.error("DATABASE_URL is required.");
+  console.error("Thiếu DATABASE_URL trong .env.local hoặc .env.");
   process.exit(1);
 }
 
