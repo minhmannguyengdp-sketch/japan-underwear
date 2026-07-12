@@ -11,6 +11,7 @@
     "catalog:r2:upload": "node scripts/catalog/upload-r2.mjs",
     "catalog:db:import": "node scripts/catalog/import-postgres.mjs",
     "catalog:bootstrap": "node scripts/catalog/bootstrap-postgres.mjs",
+    "catalog:go": "npm run catalog:bootstrap && npm run dev",
     "r2:diagnose": "node scripts/r2/diagnose.mjs",
     "r2:check": "node scripts/r2/check.mjs",
     "db:baseline": "node scripts/db/baseline-existing-catalog.mjs",
