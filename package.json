@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "node scripts/start-server.mjs",
     "lint": "eslint .",
-    "catalog:manifest": "node scripts/build-local-catalog-manifest.mjs",
+    "catalog:manifest": "node scripts/catalog/build-local-manifest.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
