@@ -98,7 +98,7 @@ const ensureCatalogScript = path.join(
   cwd,
   "scripts",
   "catalog",
-  "ensure-local-catalog.mjs",
+  "ensure-order-catalog.mjs",
 );
 const ensureCatalog = spawnSync(process.execPath, [ensureCatalogScript], {
   cwd,
