@@ -10,8 +10,12 @@ loadEnv({ path: path.resolve(cwd, ".env"), override: false, quiet: true });
 
 const EXPECTED_TABLES = [
   "brands",
+  "cart_items",
+  "carts",
   "catalog_import_runs",
   "categories",
+  "order_items",
+  "orders",
   "product_colors",
   "product_images",
   "product_variants",
@@ -23,6 +27,7 @@ const EXPECTED_MIGRATIONS = [
   1783845000000,
   1783849000000,
   1783853000000,
+  1783860000000,
 ];
 const connectionString = process.env.DATABASE_URL?.trim();
 
@@ -153,30 +158,93 @@ async function main() {
       throw new Error("product_variants.cup_code must exist and be nullable.");
     }
 
-    const variantIndexResult = await client.query(`
+    const requiredIndexes = [
+      "cart_items_cart_variant_color_uidx",
+      "carts_token_uidx",
+      "order_items_order_variant_color_uidx",
+      "orders_order_code_uidx",
+      "orders_source_cart_uidx",
+      "product_variants_product_size_cup_uidx",
+      "product_variants_product_size_no_cup_uidx",
+    ];
+    const indexResult = await client.query(
+      `
+        SELECT indexname
+        FROM pg_indexes
+        WHERE schemaname = 'japan_underwear'
+          AND indexname = ANY($1::text[])
+        ORDER BY indexname
+      `,
+      [requiredIndexes],
+    );
+    const indexes = new Set(indexResult.rows.map((row) => row.indexname));
+    const missingIndexes = requiredIndexes.filter((indexName) => !indexes.has(indexName));
+    if (missingIndexes.length > 0) {
+      throw new Error(`Missing required indexes: ${missingIndexes.join(", ")}.`);
+    }
+
+    const legacyVariantIndexResult = await client.query(`
       SELECT indexname
       FROM pg_indexes
       WHERE schemaname = 'japan_underwear'
         AND indexname IN (
           'product_variants_product_color_size_uidx',
-          'product_variants_color_idx',
-          'product_variants_product_size_cup_uidx',
-          'product_variants_product_size_no_cup_uidx'
+          'product_variants_color_idx'
         )
-      ORDER BY indexname
     `);
-    const variantIndexes = new Set(variantIndexResult.rows.map((row) => row.indexname));
-    if (variantIndexes.has("product_variants_product_color_size_uidx")) {
-      throw new Error("Legacy color-linked variant unique index still exists.");
+    if (legacyVariantIndexResult.rowCount > 0) {
+      throw new Error(
+        `Legacy color-linked variant indexes still exist: ${legacyVariantIndexResult.rows.map((row) => row.indexname).join(", ")}.`,
+      );
     }
-    if (variantIndexes.has("product_variants_color_idx")) {
-      throw new Error("Legacy product_variants color index still exists.");
+
+    const triggerResult = await client.query(`
+      SELECT trigger_name, event_object_table
+      FROM information_schema.triggers
+      WHERE trigger_schema = 'japan_underwear'
+        AND trigger_name IN (
+          'cart_items_selection_same_product_trg',
+          'order_items_selection_same_product_trg'
+        )
+      ORDER BY trigger_name
+    `);
+    const triggers = new Set(
+      triggerResult.rows.map((row) => `${row.event_object_table}:${row.trigger_name}`),
+    );
+    if (!triggers.has("cart_items:cart_items_selection_same_product_trg")) {
+      throw new Error("Missing cart_items selection identity trigger.");
     }
-    if (!variantIndexes.has("product_variants_product_size_cup_uidx")) {
-      throw new Error("Missing product_variants_product_size_cup_uidx.");
+    if (!triggers.has("order_items:order_items_selection_same_product_trg")) {
+      throw new Error("Missing order_items selection identity trigger.");
     }
-    if (!variantIndexes.has("product_variants_product_size_no_cup_uidx")) {
-      throw new Error("Missing product_variants_product_size_no_cup_uidx.");
+
+    const orderColumnResult = await client.query(`
+      SELECT table_name, column_name, is_nullable
+      FROM information_schema.columns
+      WHERE table_schema = 'japan_underwear'
+        AND (
+          (table_name = 'cart_items' AND column_name IN ('product_variant_id', 'color_id', 'quantity'))
+          OR (table_name = 'order_items' AND column_name IN ('product_variant_id', 'color_id', 'quantity'))
+        )
+      ORDER BY table_name, column_name
+    `);
+    const orderColumns = new Map(
+      orderColumnResult.rows.map((row) => [
+        `${row.table_name}.${row.column_name}`,
+        row.is_nullable,
+      ]),
+    );
+    for (const key of [
+      "cart_items.product_variant_id",
+      "cart_items.color_id",
+      "cart_items.quantity",
+      "order_items.product_variant_id",
+      "order_items.color_id",
+      "order_items.quantity",
+    ]) {
+      if (orderColumns.get(key) !== "NO") {
+        throw new Error(`${key} must exist and be NOT NULL.`);
+      }
     }
 
     const migrationTableResult = await client.query(
@@ -204,6 +272,8 @@ async function main() {
     console.log("Enum: japan_underwear.catalog_import_status.");
     console.log("Product identity: brand + category + model.");
     console.log("Variant identity: product + size + cup; color selected separately per order line.");
+    console.log("Server cart identity: cart + product_variant_id + color_id.");
+    console.log("Order item identity: order + product_variant_id + color_id; quantity stored on the row.");
     console.log(
       `Migration records: ${appliedMigrations.length} (${EXPECTED_MIGRATIONS.length} required records present).`,
     );
