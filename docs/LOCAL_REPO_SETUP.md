@@ -1,84 +1,83 @@
 # Kết nối local Windows với GitHub nhưng không đưa ảnh lên repo
 
-## Mục tiêu
+## Cấu trúc local chính thức
 
-- Code tại `F:\1_A_Disk_D\TT` đồng bộ với GitHub.
-- Ảnh catalog chỉ tồn tại trên máy local hoặc được upload sang Cloudflare R2.
-- GitHub chỉ chứa code, schema, script và metadata; không chứa ảnh sản phẩm.
-
-## Cấu trúc local đề xuất
+Thư mục `TT` là workspace chứa ảnh, bảng giá và repository code. Không chạy `git init` tại thư mục `TT`.
 
 ```text
 F:\1_A_Disk_D\TT\
-├── app\
-├── components\
-├── scripts\
-├── local-assets\                 # Git bỏ qua toàn bộ
-│   └── catalog\
-│       ├── winking\
-│       │   ├── 9090\
-│       │   │   ├── 001.jpg
-│       │   │   └── 002.jpg
-│       │   └── 9099\
-│       └── pensee\
-│           └── 9502\
-├── imports\
-│   └── images\                    # Git bỏ qua
-└── data\
-    └── local\                     # Git bỏ qua
+├── japan-underwear\                 # repository code
+│   ├── app\
+│   ├── components\
+│   ├── scripts\
+│   └── .git\
+├── WK_1600\                         # ảnh Winking, ngoài Git
+├── pensee_1600\                     # ảnh Pensee, ngoài Git
+├── QL\                              # ảnh quần lót, ngoài Git
+└── Bang_bao_gia_Winking_Pensee.xlsx # bảng giá, ngoài Git
 ```
 
-Folder theo `brand/model`; không cần đổi tên ảnh theo màu ở MVP.
+Git chỉ quản lý nội dung bên trong `japan-underwear`. Các folder ảnh và file Excel nằm ở thư mục cha nên không thể bị `git add` hoặc push nhầm từ repository.
 
-## Cách 1: thư mục TT đang trống
-
-Mở PowerShell ở thư mục bất kỳ và chạy:
+## Clone repository
 
 ```powershell
+Set-Location "F:\1_A_Disk_D\TT"
+
 git clone --branch feat/catalog-variant-ordering-ui --single-branch `
   https://github.com/minhmannguyengdp-sketch/japan-underwear.git `
-  "F:\1_A_Disk_D\TT"
+  japan-underwear
 
-Set-Location "F:\1_A_Disk_D\TT"
-New-Item -ItemType Directory -Force "local-assets\catalog\winking" | Out-Null
-New-Item -ItemType Directory -Force "local-assets\catalog\pensee" | Out-Null
+Set-Location "F:\1_A_Disk_D\TT\japan-underwear"
+npm install
 ```
 
-Hoặc sau khi tải script về, chạy:
+## Cấu hình đường dẫn local
+
+Tạo file `F:\1_A_Disk_D\TT\japan-underwear\.env.local`:
+
+```env
+LOCAL_CATALOG_ROOT=F:\1_A_Disk_D\TT
+LOCAL_WINKING_IMAGES=F:\1_A_Disk_D\TT\WK_1600
+LOCAL_PENSEE_IMAGES=F:\1_A_Disk_D\TT\pensee_1600
+LOCAL_QL_IMAGES=F:\1_A_Disk_D\TT\QL
+LOCAL_PRICE_FILE=F:\1_A_Disk_D\TT\Bang_bao_gia_Winking_Pensee.xlsx
+```
+
+`.env.local` đã bị Git bỏ qua.
+
+## Chính sách port
+
+Port `3000` được giữ riêng và tuyệt đối không dùng cho dự án này.
+
+Chạy local bằng:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\connect-local-repo.ps1
+Set-Location "F:\1_A_Disk_D\TT\japan-underwear"
+npm run dev
 ```
 
-## Cách 2: thư mục TT đang chứa ảnh
+Địa chỉ mặc định:
 
-Không chạy `git init` chồng thẳng lên thư mục ảnh hiện tại.
+```text
+http://localhost:3100
+```
 
-1. Đổi tên thư mục hiện tại, ví dụ `TT-images-backup`.
-2. Clone repository vào đúng `F:\1_A_Disk_D\TT`.
-3. Tạo `local-assets\catalog\...`.
-4. Chuyển ảnh từ thư mục backup vào `local-assets\catalog\brand\model\`.
-5. Xóa backup sau khi đã kiểm tra đủ ảnh.
+Script `scripts/dev-server.mjs` sẽ dừng ngay nếu `DEV_PORT=3000`.
 
-Cách này tránh Git vô tình nhận diện hàng nghìn ảnh là file mới.
-
-## Kiểm tra ảnh đã được bỏ qua
+Có thể dùng port khác khi cần, ngoại trừ 3000:
 
 ```powershell
-Set-Location "F:\1_A_Disk_D\TT"
-
-git check-ignore -v "local-assets\catalog\winking\9090\001.jpg"
-git status --short --ignored
+$env:DEV_PORT = "3101"
+npm run dev
 ```
 
-Kết quả `git status --short --ignored` sẽ hiện ảnh bằng tiền tố `!!`, nghĩa là Git đang bỏ qua.
+Heroku không dùng cấu hình local này. Lệnh production `npm start` tiếp tục nhận biến `PORT` động do Heroku cấp.
 
 ## Quy trình làm việc hằng ngày
 
-Lấy code mới:
-
 ```powershell
-Set-Location "F:\1_A_Disk_D\TT"
+Set-Location "F:\1_A_Disk_D\TT\japan-underwear"
 git pull --ff-only origin feat/catalog-variant-ordering-ui
 npm install
 npm run dev
@@ -93,40 +92,32 @@ git commit -m "feat: update catalog ordering"
 git push origin feat/catalog-variant-ordering-ui
 ```
 
-Không dùng:
+## Kiểm tra phạm vi Git
 
 ```powershell
-git add -f local-assets
+Set-Location "F:\1_A_Disk_D\TT\japan-underwear"
+git rev-parse --show-toplevel
+git status --short
 ```
 
-`-f` sẽ cưỡng ép Git đưa ảnh đã ignore vào commit.
-
-## Nếu ảnh từng bị Git track trước đó
-
-Chạy một lần:
-
-```powershell
-git rm -r --cached --ignore-unmatch `
-  local-assets `
-  catalog-images `
-  imports/images `
-  public/catalog-local `
-  data/local
-
-git commit -m "chore: stop tracking local catalog assets"
-git push
-```
-
-Lệnh chỉ xóa ảnh khỏi Git index; file vật lý trên máy vẫn còn.
-
-## Luồng R2 sau này
+`git rev-parse --show-toplevel` phải trả về:
 
 ```text
-local-assets/catalog/winking/9090/*
-        ↓ script upload
-R2 catalog/winking/9090/*
-        ↓ importer ghi metadata
+F:/1_A_Disk_D/TT/japan-underwear
+```
+
+Không được trả về `F:/1_A_Disk_D/TT`.
+
+## Luồng ảnh sang R2
+
+```text
+F:\1_A_Disk_D\TT\WK_1600\...
+F:\1_A_Disk_D\TT\pensee_1600\...
+F:\1_A_Disk_D\TT\QL\...
+        ↓ importer đọc local
+Cloudflare R2 catalog/<brand>/<model>/*
+        ↓ lưu metadata
 PostgreSQL product_images
 ```
 
-GitHub không tham gia lưu ảnh. Database chỉ lưu `r2_key`, thứ tự ảnh và ảnh bìa của model.
+GitHub chỉ chứa code và metadata. Ảnh sản phẩm đi từ local sang R2, không đi qua repository.
