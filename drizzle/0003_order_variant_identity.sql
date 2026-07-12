@@ -16,6 +16,12 @@ ALTER TABLE "japan_underwear"."product_variants"
   DROP COLUMN IF EXISTS "color_id";--> statement-breakpoint
 ALTER TABLE "japan_underwear"."product_variants"
   ADD COLUMN IF NOT EXISTS "cup_code" text;--> statement-breakpoint
+ALTER TABLE "japan_underwear"."product_colors"
+  ADD CONSTRAINT "product_colors_code_nonempty_chk"
+  CHECK (btrim("code") <> '');--> statement-breakpoint
+ALTER TABLE "japan_underwear"."product_colors"
+  ADD CONSTRAINT "product_colors_name_nonempty_chk"
+  CHECK (btrim("name") <> '');--> statement-breakpoint
 ALTER TABLE "japan_underwear"."product_variants"
   ADD CONSTRAINT "product_variants_size_nonempty_chk"
   CHECK (btrim("size_code") <> '');--> statement-breakpoint
