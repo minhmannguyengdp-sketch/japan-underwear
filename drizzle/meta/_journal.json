@@ -29,6 +29,13 @@
       "when": 1783853000000,
       "tag": "0003_order_variant_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783860000000,
+      "tag": "0004_server_cart_orders",
+      "breakpoints": true
     }
   ]
 }
