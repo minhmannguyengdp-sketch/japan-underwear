@@ -5,23 +5,21 @@ import {
   index,
   integer,
   jsonb,
-  pgEnum,
   pgSchema,
-  pgTable,
   text,
   timestamp,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
-export const importStatus = pgEnum("catalog_import_status", [
+const catalogSchema = pgSchema("japan_underwear");
+
+export const importStatus = catalogSchema.enum("catalog_import_status", [
   "pending",
   "running",
   "completed",
   "failed",
 ]);
-
-const catalogSchema = pgSchema("japan_underwear");
 
 export const brands = catalogSchema.table(
   "brands",
