@@ -6,6 +6,8 @@ loadEnv({ path: path.resolve(process.cwd(), ".env.local"), quiet: true });
 loadEnv({ path: path.resolve(process.cwd(), ".env"), quiet: true });
 
 const ACCOUNT_ID_PATTERN = /^[a-f0-9]{32}$/i;
+const ACCESS_KEY_ID_PATTERN = /^[a-f0-9]{32}$/i;
+const SECRET_ACCESS_KEY_PATTERN = /^[a-f0-9]{64}$/i;
 const R2_JURISDICTIONS = new Set(["default", "eu", "fedramp"]);
 
 function requireEnv(name) {
@@ -81,7 +83,19 @@ export function loadR2Config() {
 
   const bucket = requireEnv("R2_BUCKET");
   const accessKeyId = requireEnv("R2_ACCESS_KEY_ID");
+  if (!ACCESS_KEY_ID_PATTERN.test(accessKeyId)) {
+    throw new Error(
+      "R2_ACCESS_KEY_ID phải là Access Key ID R2 gồm đúng 32 ký tự hex.",
+    );
+  }
+
   const secretAccessKey = requireEnv("R2_SECRET_ACCESS_KEY");
+  if (!SECRET_ACCESS_KEY_PATTERN.test(secretAccessKey)) {
+    throw new Error(
+      "R2_SECRET_ACCESS_KEY phải là Secret Access Key R2 gồm đúng 64 ký tự hex. Key hiện tại có thể bị thiếu ký tự hoặc bị dotenv cắt.",
+    );
+  }
+
   const publicBaseUrl =
     process.env.R2_PUBLIC_BASE_URL?.trim().replace(/\/+$/g, "") || null;
   const prefix = normalizePrefix(process.env.R2_PREFIX);
