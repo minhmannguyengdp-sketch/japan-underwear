@@ -42,20 +42,20 @@ function StateCard({ failed }: { failed: boolean }) {
             {failed ? "Lỗi kết nối dữ liệu" : "Catalog chưa được nạp"}
           </p>
           <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
-            {failed ? "Không đọc được PostgreSQL." : "Database đang có 0 model."}
+            {failed ? "Không đọc được PostgreSQL." : "Database vẫn đang có 0 model."}
           </h1>
           <p className="mt-4 max-w-xl leading-7 text-slate-600">
             {failed
-              ? "Kiểm tra DATABASE_URL trong .env.local và chạy lại quy trình bootstrap catalog."
-              : "Kết nối database đã hoạt động, nhưng catalog chưa được import vào schema japan_underwear."}
+              ? "Dev server chưa thể kết nối hoặc chuẩn bị catalog. Xem lỗi cụ thể trong terminal."
+              : "Bản mới sẽ tự migrate và import catalog trước khi mở dev server. Trạng thái này thường nghĩa là anh vẫn đang chạy process cũ."}
           </p>
         </div>
 
         <div className="bg-[#fbfaff] p-6 sm:p-8">
-          <p className="text-sm font-black">Dừng dev server, rồi chạy đúng hai lệnh:</p>
-          <pre className="mt-3 overflow-x-auto rounded-2xl bg-ink-950 p-4 text-sm leading-7 text-white"><code>{`git pull --ff-only origin feat/catalog-variant-ordering-ui\nnpm run catalog:bootstrap`}</code></pre>
+          <p className="text-sm font-black">Dừng process cũ, cập nhật code rồi chạy một lệnh:</p>
+          <pre className="mt-3 overflow-x-auto rounded-2xl bg-ink-950 p-4 text-sm leading-7 text-white"><code>{`git pull --ff-only origin feat/catalog-variant-ordering-ui\nnpm run dev`}</code></pre>
           <p className="mt-4 text-sm leading-6 text-slate-500">
-            Khi terminal báo <strong>Products: 116. Images: 1061.</strong>, chạy lại <strong>npm run dev</strong>.
+            <strong>npm run dev</strong> giờ tự kiểm tra DB; nếu đang 0 model, nó sẽ tự chạy migrate, verify và import trước khi mở cổng 3100.
           </p>
         </div>
       </section>
