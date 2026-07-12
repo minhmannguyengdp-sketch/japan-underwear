@@ -14,6 +14,7 @@
     "db:baseline": "node scripts/db/baseline-existing-catalog.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:verify": "node scripts/db/verify-catalog-migration.mjs",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
