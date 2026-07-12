@@ -3,12 +3,15 @@
 ## Nguyên tắc đã chốt
 
 - Một model sản phẩm có gallery ảnh chung.
-- Khách chọn nhiều dòng `màu + size + số lượng` rồi thêm cả cụm vào giỏ.
+- Màu là metadata cấp sản phẩm để hiển thị tham khảo; không click, không đổi gallery và không tham gia khóa giỏ hàng.
+- Khách chỉ chọn `size + cup + số lượng`; với sản phẩm không có cup thì chọn `size + số lượng`.
+- Không tạo tích Descartes `màu × size × cup`.
 - Ảnh local không nằm trong repository và không được commit.
-- Slug chỉ dùng cho URL; khóa nghiệp vụ là UUID/model/variant.
+- Slug chỉ dùng cho URL; khóa nghiệp vụ sản phẩm là `brand + category + model`.
 - Login tiếp tục bị chặn tại stop gate #2.
 - Local tuyệt đối không sử dụng port 3000; mặc định là 3100.
 - Không tự suy diễn giá, màu hoặc size từ tên ảnh.
+- Giá bảng giá là nguồn authoritative; giá website và giá trong mô tả chỉ là bằng chứng audit.
 
 ## Cấu trúc máy local
 
@@ -104,7 +107,25 @@ GET /api/catalog?q=9501
 GET /api/catalog?brand=pensee&category=ao-nguc
 ```
 
-Khi product chưa có `product_colors` và `product_variants`, UI vẫn hiển thị model và gallery thật nhưng khóa thao tác thêm giỏ. Đây là trạng thái đúng vì manifest ảnh không chứa giá, màu hoặc size.
+Khi product chưa có variant thật, UI vẫn hiển thị model, gallery, giá và màu tham khảo nhưng khóa thao tác thêm giỏ. Đây là trạng thái đúng vì khách chỉ được đặt hàng khi có tổ hợp size/cup đã kiểm chứng.
+
+## 5. Audit website Tuấn Thủy
+
+Tạo audit thô bằng browser scraper, sau đó hợp nhất các trang màu về một model:
+
+```powershell
+npm run catalog:web:audit -- \
+  ".\data\local\tuan-thuy-product-audit-2026-07-12.json"
+```
+
+Đối chiếu audit đã hợp nhất với catalog active local:
+
+```powershell
+npm run catalog:web:review -- \
+  ".\data\local\tuan-thuy-product-audit-2026-07-12.consolidated.json"
+```
+
+Lệnh review mặc định đọc `data/local/catalog-manifest.json` và tạo file `*.review-plan.json`. Nó chỉ sinh kế hoạch review, không ghi PostgreSQL.
 
 ## Quy tắc nhận diện ảnh
 
@@ -115,20 +136,25 @@ Khi product chưa có `product_colors` và `product_variants`, UI vẫn hiển t
 - Các số kích thước ảnh phổ biến như `1080`, `1200`, `1600`, `1920` không được coi là model.
 - File không nhận diện được nằm trong `unmatchedFiles`, không bị gán bừa.
 
-## Schema catalog
+## Schema catalog mục tiêu
 
 ```text
 brands
 categories
-products                # một model gốc
-product_colors          # màu của model
-product_variants        # màu + size
-product_images          # gallery chung; color_id nullable
+products                # một model gốc; identity brand + category + model
+product_colors          # metadata màu tham khảo cấp sản phẩm
+product_variants        # size + cup; cup nullable cho sản phẩm chỉ có size
+product_images          # gallery chung, không bắt buộc map ảnh theo màu
 catalog_import_runs     # log import và idempotency
 ```
 
-MVP không bắt buộc map ảnh theo màu. `product_images.color_id` được để nullable để có thể bổ sung ảnh đại diện màu về sau mà không đổi schema.
+MVP không map ảnh theo màu. Màu không điều khiển gallery và không tham gia identity của variant hoặc cart line.
 
 ## Bước dữ liệu tiếp theo
 
-Đọc và kiểm tra cấu trúc `Bang_bao_gia_Winking_Pensee.xlsx`, sau đó import giá, màu và size bằng khóa `brand + model`. Không nối dữ liệu dựa trên thứ tự dòng hoặc tên hiển thị.
+- Duyệt `*.review-plan.json` theo catalog active thật.
+- Chỉ import các variant có tổ hợp size/cup rõ ràng và đã được phê duyệt.
+- Giữ 17 model thiếu size/cup ở trạng thái khóa đặt hàng.
+- Upsert màu website như metadata hiển thị cấp sản phẩm sau khi đối chiếu active catalog.
+- Thiết kế migration trong schema `japan_underwear` để variant có identity `product + size + cup`; không đụng `public` hoặc `vlgn`.
+- Login vẫn giữ stop gate #2 cho tới khi issue #7 có quyết định.
