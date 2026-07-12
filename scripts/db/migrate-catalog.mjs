@@ -51,11 +51,14 @@ function resolveDrizzleCli() {
   return cliPath;
 }
 
-run(process.execPath, [resolveDrizzleCli(), "migrate"], "Drizzle migrations");
+// Reconcile the real order-variant schema before Drizzle evaluates 0003.
+// This produces an explicit legacy-data error instead of an opaque migration failure,
+// records 0003 only after state verification, then lets Drizzle apply any later migrations.
 run(
   process.execPath,
   [path.resolve(cwd, "scripts", "db", "apply-order-variant-identity.mjs")],
   "Order variant identity migration",
 );
+run(process.execPath, [resolveDrizzleCli(), "migrate"], "Drizzle migrations");
 
 console.log("\nCatalog migrations completed.");
