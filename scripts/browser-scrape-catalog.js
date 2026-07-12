@@ -30,6 +30,7 @@
   const IGNORE_OPTION = /(chọn|select|choose|vui lòng)/i;
   const BOILERPLATE = /(đổi trả|giao hàng|thanh toán|hotline|liên hệ|bảo quản|hướng dẫn giặt|chính sách|cam kết|copyright|tuanthuy\.com|@tuanthuy|\b0\d{8,10}\b)/i;
   const FEATURE_WORDS = /(chất liệu|cotton|ren|mút|gọng|cúp|cup|bản lưng|dây áo|nâng|đỡ|định hình|co giãn|thoáng|ôm|mềm|không đường may|phom|form|thiết kế|tháo rời|điều chỉnh)/i;
+  const MARKETING_TEXT = /(càng ngắm|giới thiệu chung|thương hiệu của|phái đẹp|quyến rũ|tự tin|hoàn hảo)/i;
   const IMAGE_EXT = /\.(?:avif|gif|jpe?g|png|webp)$/i;
 
   function sameOriginUrl(value, base = location.href) {
@@ -256,9 +257,9 @@
   function descriptionSizeCupRows(rawText, basePrice) {
     const rows = [];
     const evidenceSegments = [];
-    const expression = /(?:^|\s)(?:size|k[ií]ch\s*c[ỡơ]|c[ỡơ])\s*[:：-]\s*([\s\S]{1,160}?)(?=\s*(?:gi[aá]|m[aà]u|hotline|☎|💻|📧|https?:|www\.|$))/gi;
+    const expression = /(?:size|k[ií]ch\s*c[ỡơ]|c[ỡơ])\s*[:：-]\s*([\s\S]{1,180})/gi;
     for (const match of String(rawText || '').matchAll(expression)) {
-      const segment = clean(match[1]);
+      const segment = clean(String(match[1] || '').split(/(?:➖|▪|▫|•|●|◾|◽|☎|💻|📧|_{3,}|-{3,}|gi[aá]\s*[:：-]?|m[aà]u\s*[:：-]?|https?:|www\.)/i)[0]);
       if (!segment) continue;
       evidenceSegments.push(segment);
       const combined = [...segment.matchAll(/\b(\d{2,3})\s*[-\/]?\s*([A-H])\b/gi)];
@@ -391,15 +392,20 @@
     const rawText = clean(ldDescription) || clean(root?.textContent);
     const nodeTexts = root ? [...root.querySelectorAll('li, p, h2, h3, h4')].map((node) => clean(node.textContent)) : [];
     const splitTexts = String(rawText || '')
+      .replace(/[\uFE0F⚜]+/g, '')
       .replace(/[-_]{5,}/g, '\n')
       .replace(/[▪▫•●◾◽➖]+/g, '\n')
       .replace(/(?:chất liệu và ưu điểm|giới thiệu chung)\s*:/gi, '\n')
+      .replace(/([.!?])(?=[A-ZÀ-Ỹ])/g, '$1\n')
       .split(/\n+|[.!?]\s+/)
       .map(clean);
     const featureCandidates = uniq([...nodeTexts, ...splitTexts]
+      .map((value) => clean(value.replace(/[\uFE0F⚜]+/g, '').split(/(?:phom dáng chuẩn\s+)?giúp phái đẹp|đem đến sự|mang đến sự/i)[0]))
       .filter((value) => value.length >= 12 && value.length <= 240)
       .filter((value) => FEATURE_WORDS.test(value))
       .filter((value) => !BOILERPLATE.test(value))
+      .filter((value) => !MARKETING_TEXT.test(value))
+      .filter((value) => !/^chất liệu vải cao cấp$/i.test(value))
       .filter((value) => !/^(m[aã]|size|gi[aá]|sku|website|email)\s*[:：-]/i.test(value)))
       .slice(0, 16);
     return {
