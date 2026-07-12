@@ -10,7 +10,7 @@ const EXPECTED_TABLES = [
   "products",
 ];
 
-const EXPECTED_MIGRATIONS = [1783842973000, 1783845000000];
+const EXPECTED_MIGRATIONS = [1783842973000, 1783845000000, 1783849000000];
 const connectionString = process.env.DATABASE_URL?.trim();
 
 if (!connectionString) {
@@ -18,13 +18,20 @@ if (!connectionString) {
   process.exit(1);
 }
 
-const isLocalDatabase = /@(localhost|127\.0\.0\.1)(:\d+)?\//i.test(
-  connectionString,
-);
+function isLocalDatabase(value) {
+  try {
+    const url = new URL(value);
+    return url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  } catch {
+    return /@(localhost|127\.0\.0\.1)(:\d+)?\//i.test(value);
+  }
+}
 
 const client = new Client({
   connectionString,
-  ssl: isLocalDatabase ? undefined : { rejectUnauthorized: false },
+  ssl: isLocalDatabase(connectionString)
+    ? undefined
+    : { rejectUnauthorized: false },
 });
 
 async function main() {
@@ -102,6 +109,32 @@ async function main() {
       );
     }
 
+    const identityResult = await client.query(`
+      SELECT
+        to_regclass('japan_underwear.products_brand_category_model_uidx') AS identity_index,
+        to_regclass('japan_underwear.products_brand_model_uidx') AS legacy_index,
+        information_schema.columns.is_nullable AS category_nullable
+      FROM information_schema.columns
+      WHERE information_schema.columns.table_schema = 'japan_underwear'
+        AND information_schema.columns.table_name = 'products'
+        AND information_schema.columns.column_name = 'category_id'
+    `);
+
+    if (identityResult.rowCount !== 1) {
+      throw new Error("Không đọc được cấu trúc products.category_id.");
+    }
+
+    const identity = identityResult.rows[0];
+    if (!identity.identity_index) {
+      throw new Error("Missing products_brand_category_model_uidx.");
+    }
+    if (identity.legacy_index) {
+      throw new Error("Legacy products_brand_model_uidx still exists.");
+    }
+    if (identity.category_nullable !== "NO") {
+      throw new Error("products.category_id must be NOT NULL.");
+    }
+
     const migrationTableResult = await client.query(
       "SELECT to_regclass('drizzle.__drizzle_migrations') AS table_name",
     );
@@ -132,6 +165,7 @@ async function main() {
     console.log("Catalog DB verification OK.");
     console.log(`Tables: ${actualTables.length}.`);
     console.log("Enum: japan_underwear.catalog_import_status.");
+    console.log("Product identity: brand + category + model.");
     console.log(
       `Migration records: ${appliedMigrations.length} (${EXPECTED_MIGRATIONS.length} required records present).`,
     );
