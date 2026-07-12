@@ -52,8 +52,8 @@ function countIssues(issues) {
 }
 
 console.log("\n=== Audit theo nghiệp vụ bảng giá ===");
-console.log("Catalog active = model có trong bảng giá và có ảnh.");
-console.log("Model bảng giá không có ảnh được bỏ qua vì có thể đã ngừng mẫu.\n");
+console.log("Catalog active = model có trong bảng giá và có ảnh, cộng ngoại lệ đã được chủ catalog xác nhận.");
+console.log("Model bảng giá không có ảnh được bỏ qua vì có thể đã ngừng mẫu, trừ ngoại lệ đã giữ lại.\n");
 
 runNode("Canonical manifest", canonicalBuilderPath);
 runNode("Raw catalog audit", rawAuditPath, ["--no-refresh"]);
@@ -63,6 +63,8 @@ const [audit, manifest] = await Promise.all([
   fs.readFile(manifestPath, "utf8").then(JSON.parse),
 ]);
 
+const retainedNoImage = manifest.retainedNoImageProducts ?? [];
+const retainedKeys = new Set(retainedNoImage.map((item) => item.key));
 const omittedIssueCodes = new Set([
   "price-product-missing-images",
   "ql-file-not-in-manifest",
@@ -73,6 +75,13 @@ let r2SyncRequiredObjects = 0;
 
 for (const issue of audit.issues ?? []) {
   if (omittedIssueCodes.has(issue.code)) continue;
+
+  if (
+    issue.code === "price-product-category-mismatch" &&
+    retainedKeys.has(issue.productKey)
+  ) {
+    continue;
+  }
 
   if (issue.code === R2_PENDING_CODE) {
     r2SyncRequiredObjects += 1;
@@ -89,6 +98,23 @@ for (const issue of audit.issues ?? []) {
   issues.push(issue);
 }
 
+for (const retained of retainedNoImage) {
+  issues.push({
+    severity: "info",
+    code: "owner-reviewed-product-retained-without-image",
+    productKey: retained.key,
+    message:
+      "Sản phẩm được chủ catalog xác nhận phải giữ active dù chưa có ảnh đúng nhóm. Không tự mượn ảnh từ sản phẩm khác category.",
+    expected: "active",
+    actual: "active-without-image",
+    paths: [],
+    details: {
+      reason: retained.reason ?? null,
+      priceRows: retained.priceRows ?? [],
+    },
+  });
+}
+
 const severityCounts = countIssues(issues);
 const omittedNoImage = manifest.priceProductsWithoutImages ?? [];
 const excludedImageOnly = manifest.excludedImageProducts ?? [];
@@ -97,11 +123,13 @@ const blockerIssues = issues.filter((issue) => issue.severity === "critical");
 
 const authoritativeAudit = {
   ...audit,
-  schemaVersion: 3,
+  schemaVersion: 4,
   businessRule: {
     identityAuthority: "price-list",
-    activeCatalog: "intersection(price-list, products-with-images)",
+    activeCatalog:
+      "intersection(price-list, products-with-images) plus owner-reviewed retained products",
     missingImageDisposition: "omitted-possible-discontinued",
+    retainedWithoutImageDisposition: "active-owner-reviewed",
     imageOnlyDisposition: "excluded-not-in-current-price-list",
     pendingR2SyncDisposition: "warning-not-identity-blocker",
   },
@@ -109,6 +137,7 @@ const authoritativeAudit = {
     ...audit.summary,
     activeCatalogProducts: Number(manifest.summary?.productGroupCount ?? 0),
     activeCatalogImages: Number(manifest.summary?.matchedImageCount ?? 0),
+    retainedWithoutImages: retainedNoImage.length,
     priceProductsOmittedNoImages: omittedNoImage.length,
     imageProductsExcludedNotInPriceList: excludedImageOnly.length,
     unresolvedImageProducts: unresolved.length,
@@ -118,6 +147,7 @@ const authoritativeAudit = {
   },
   coverage: {
     ...audit.coverage,
+    retainedProductsWithoutImages: retainedNoImage,
     omittedPriceProductsWithoutImages: omittedNoImage,
     excludedImageProductsNotInPriceList: excludedImageOnly,
     unresolvedImageProducts: unresolved,
@@ -162,8 +192,9 @@ const markdown = [
   "# Catalog audit theo bảng giá",
   "",
   `- Thời điểm: ${authoritativeAudit.generatedAt}`,
-  `- Quy tắc active: **có trong bảng giá + có ảnh**`,
+  `- Quy tắc active: **có trong bảng giá + có ảnh, cộng ngoại lệ đã xác nhận**`,
   `- Catalog active: **${authoritativeAudit.summary.activeCatalogProducts} model / ${authoritativeAudit.summary.activeCatalogImages} ảnh**`,
+  `- Ngoại lệ được giữ active dù chưa có ảnh đúng nhóm: **${retainedNoImage.length} model**`,
   `- Có trong bảng giá nhưng không có ảnh: **${omittedNoImage.length} model — bỏ qua, có thể đã ngừng mẫu**`,
   `- Có ảnh nhưng không có trong bảng giá hiện tại: **${excludedImageOnly.length} model — loại khỏi catalog active**`,
   `- Identity còn mơ hồ: **${unresolved.length} model**`,
@@ -184,7 +215,8 @@ const markdown = [
   "",
   "## Quyết định nghiệp vụ",
   "",
-  "- Không tạo lỗi cho model bảng giá không có ảnh.",
+  "- Không tạo lỗi cho model bảng giá không có ảnh, trừ khi chủ catalog xác nhận phải giữ.",
+  "- Ba model quần lót 9501, 9514 và 9108 được giữ active theo xác nhận, nhưng không tự dùng ảnh áo ngực cùng mã.",
   "- Không đưa model chỉ có ảnh nhưng không có trong bảng giá hiện tại vào catalog active.",
   "- R2 report cũ sau khi canonical remap chỉ là trạng thái cần đồng bộ, không phải lỗi identity.",
   "- Chỉ lỗi identity/trùng ảnh chéo còn hiệu lực mới chặn import.",
@@ -199,6 +231,7 @@ console.log("\n=== Kết quả audit theo bảng giá ===");
 console.log(
   `Catalog active: ${authoritativeAudit.summary.activeCatalogProducts} model / ${authoritativeAudit.summary.activeCatalogImages} ảnh.`,
 );
+console.log(`Giữ active dù chưa có ảnh đúng nhóm: ${retainedNoImage.length} model.`);
 console.log(
   `Bỏ model bảng giá không có ảnh: ${omittedNoImage.length} (có thể đã ngừng mẫu).`,
 );
