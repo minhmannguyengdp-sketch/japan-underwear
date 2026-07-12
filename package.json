@@ -10,6 +10,7 @@
     "catalog:manifest": "node scripts/catalog/build-price-authoritative-manifest.mjs",
     "catalog:audit": "node scripts/catalog/audit-price-authoritative-catalog.mjs",
     "catalog:web:audit": "node scripts/catalog/consolidate-tuan-thuy-audit.mjs",
+    "catalog:web:review": "node scripts/catalog/build-tuan-thuy-review-plan.mjs",
     "catalog:sync": "node scripts/catalog/sync-active-catalog.mjs",
     "catalog:r2:upload": "node scripts/catalog/upload-r2.mjs",
     "catalog:db:import": "node scripts/catalog/import-postgres.mjs",
