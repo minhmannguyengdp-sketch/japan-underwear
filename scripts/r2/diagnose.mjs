@@ -6,17 +6,12 @@ import { loadR2Config } from "./config.mjs";
 
 const envFile = path.resolve(process.cwd(), ".env.local");
 const groups = {
-  accountId: ["R2_ACCOUNT_ID", "CLOUDFLARE_R2_ACCOUNT_ID"],
-  bucket: ["R2_BUCKET", "CLOUDFLARE_R2_BUCKET"],
-  accessKeyId: [
-    "R2_ACCESS_KEY_ID",
-    "CLOUDFLARE_R2_ACCESS_KEY_ID",
-    "CLOUDFLARE_R2_USER_ACCESS_KEY_ID",
-  ],
+  accountId: ["CLOUDFLARE_R2_ACCOUNT_ID", "R2_ACCOUNT_ID"],
+  bucket: ["CLOUDFLARE_R2_BUCKET", "R2_BUCKET"],
+  accessKeyId: ["CLOUDFLARE_R2_ACCESS_KEY_ID", "R2_ACCESS_KEY_ID"],
   secretAccessKey: [
-    "R2_SECRET_ACCESS_KEY",
     "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
-    "CLOUDFLARE_R2_USER_SECRET_ACCESS_KEY",
+    "R2_SECRET_ACCESS_KEY",
   ],
 };
 
@@ -58,6 +53,18 @@ function describe(label, result, secret = false) {
   console.log(`${label}: ${result.value} | source=${result.source}`);
 }
 
+function findConflicts(parsed, names) {
+  const present = names
+    .map((name) => ({ name, value: process.env[name]?.trim() || parsed[name]?.trim() || null }))
+    .filter((entry) => entry.value);
+
+  if (present.length < 2) return [];
+  const unique = new Set(present.map((entry) => entry.value));
+  if (unique.size < 2) return [];
+
+  return present.map((entry) => entry.name);
+}
+
 let source;
 try {
   source = await fs.readFile(envFile, "utf8");
@@ -72,6 +79,7 @@ const resolved = Object.fromEntries(
   Object.entries(groups).map(([key, names]) => [key, resolveValue(parsed, names)]),
 );
 const errors = [];
+const warnings = [];
 
 if (!resolved.accountId.value) errors.push("Thiếu R2 Account ID.");
 if (!resolved.bucket.value) errors.push("Thiếu tên bucket R2.");
@@ -89,6 +97,15 @@ if (
   !patterns.secretAccessKey.test(resolved.secretAccessKey.value)
 ) {
   errors.push(`${resolved.secretAccessKey.source} phải gồm đúng 64 ký tự hex.`);
+}
+
+for (const [key, names] of Object.entries(groups)) {
+  const conflicts = findConflicts(parsed, names);
+  if (conflicts.length > 0) {
+    warnings.push(
+      `${key} có nhiều biến khác nhau: ${conflicts.join(", ")}. Đang ưu tiên ${resolved[key].source}.`,
+    );
+  }
 }
 
 console.log(`Env file: ${envFile}`);
@@ -122,6 +139,11 @@ try {
   errors.push(error instanceof Error ? error.message : String(error));
 } finally {
   client?.destroy();
+}
+
+if (warnings.length > 0) {
+  console.log("\nCảnh báo:");
+  for (const warning of warnings) console.log(`- ${warning}`);
 }
 
 if (errors.length > 0) {
