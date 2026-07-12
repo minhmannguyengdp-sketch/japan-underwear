@@ -67,21 +67,43 @@ const omittedIssueCodes = new Set([
   "price-product-missing-images",
   "ql-file-not-in-manifest",
 ]);
-const issues = (audit.issues ?? []).filter((issue) => !omittedIssueCodes.has(issue.code));
-const severityCounts = countIssues(issues);
+const R2_PENDING_CODE = "manifest-object-missing-from-r2-report";
+const issues = [];
+let r2SyncRequiredObjects = 0;
 
+for (const issue of audit.issues ?? []) {
+  if (omittedIssueCodes.has(issue.code)) continue;
+
+  if (issue.code === R2_PENDING_CODE) {
+    r2SyncRequiredObjects += 1;
+    issues.push({
+      ...issue,
+      severity: "warning",
+      code: "r2-sync-required-after-canonical-remap",
+      message:
+        "Manifest canonical đã đổi identity/key; object cần được đồng bộ lại lên R2. Đây là việc đồng bộ, không phải lỗi nhận dạng sản phẩm.",
+    });
+    continue;
+  }
+
+  issues.push(issue);
+}
+
+const severityCounts = countIssues(issues);
 const omittedNoImage = manifest.priceProductsWithoutImages ?? [];
 const excludedImageOnly = manifest.excludedImageProducts ?? [];
 const unresolved = manifest.unresolvedImageProducts ?? [];
+const blockerIssues = issues.filter((issue) => issue.severity === "critical");
 
 const authoritativeAudit = {
   ...audit,
-  schemaVersion: 2,
+  schemaVersion: 3,
   businessRule: {
     identityAuthority: "price-list",
     activeCatalog: "intersection(price-list, products-with-images)",
     missingImageDisposition: "omitted-possible-discontinued",
     imageOnlyDisposition: "excluded-not-in-current-price-list",
+    pendingR2SyncDisposition: "warning-not-identity-blocker",
   },
   summary: {
     ...audit.summary,
@@ -90,6 +112,8 @@ const authoritativeAudit = {
     priceProductsOmittedNoImages: omittedNoImage.length,
     imageProductsExcludedNotInPriceList: excludedImageOnly.length,
     unresolvedImageProducts: unresolved.length,
+    r2SyncRequiredObjects,
+    blockerCriticalIssues: blockerIssues.length,
     issues: severityCounts,
   },
   coverage: {
@@ -98,6 +122,7 @@ const authoritativeAudit = {
     excludedImageProductsNotInPriceList: excludedImageOnly,
     unresolvedImageProducts: unresolved,
   },
+  blockers: blockerIssues,
   issues,
 };
 
@@ -144,7 +169,8 @@ const markdown = [
   `- Identity còn mơ hồ: **${unresolved.length} model**`,
   `- Trùng ảnh chạm QL: **${authoritativeAudit.summary.duplicateGroupsTouchingQl} nhóm**`,
   `- Trùng chéo nhiều sản phẩm: **${authoritativeAudit.summary.duplicateCrossProductGroups} nhóm**`,
-  `- R2 thiếu object theo manifest active: **${authoritativeAudit.summary.missingR2Objects}**`,
+  `- R2 cần đồng bộ lại theo manifest canonical: **${r2SyncRequiredObjects} object — không phải lỗi identity**`,
+  `- Blocker thật: **${blockerIssues.length} critical**`,
   `- Issues còn hiệu lực: **${severityCounts.critical} critical / ${severityCounts.warning} warning / ${severityCounts.info} info**`,
   "",
   "## Issues cần xử lý",
@@ -160,6 +186,7 @@ const markdown = [
   "",
   "- Không tạo lỗi cho model bảng giá không có ảnh.",
   "- Không đưa model chỉ có ảnh nhưng không có trong bảng giá hiện tại vào catalog active.",
+  "- R2 report cũ sau khi canonical remap chỉ là trạng thái cần đồng bộ, không phải lỗi identity.",
   "- Chỉ lỗi identity/trùng ảnh chéo còn hiệu lực mới chặn import.",
   "",
   "Báo cáo JSON đầy đủ: `data/local/catalog-audit.json`",
@@ -179,6 +206,8 @@ console.log(
   `Loại model có ảnh nhưng không có trong bảng giá: ${excludedImageOnly.length}.`,
 );
 console.log(`Identity còn mơ hồ: ${unresolved.length}.`);
+console.log(`R2 cần đồng bộ lại: ${r2SyncRequiredObjects} object (không chặn identity).`);
+console.log(`Blocker thật: ${blockerIssues.length} critical.`);
 console.log(
   `Issues còn hiệu lực: ${severityCounts.critical} critical / ${severityCounts.warning} warning / ${severityCounts.info} info.`,
 );
@@ -186,4 +215,4 @@ console.log(`Markdown: ${auditMarkdownPath}`);
 console.log(`JSON: ${auditJsonPath}`);
 console.log(`CSV: ${auditCsvPath}`);
 
-if (strict && severityCounts.critical > 0) process.exitCode = 2;
+if (strict && blockerIssues.length > 0) process.exitCode = 2;
