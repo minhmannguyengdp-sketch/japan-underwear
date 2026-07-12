@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1783842973000,
+      "tag": "0000_parallel_trauma",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783845000000,
+      "tag": "0001_fix_catalog_import_status_schema",
+      "breakpoints": true
+    }
+  ]
+}
