@@ -14,6 +14,8 @@ const IMAGE_EXTENSIONS = new Set([
 ]);
 
 const RESERVED_NUMBER_TOKENS = new Set(["1080", "1200", "1600", "1920"]);
+const YEAR_MIN = 1900;
+const YEAR_MAX = 2099;
 
 const MODEL_RULES = [
   { prefix: "95", brand: "pensee", category: "ao-nguc" },
@@ -21,6 +23,12 @@ const MODEL_RULES = [
   { prefix: "90", brand: "winking", category: "ao-nguc" },
   { prefix: "80", brand: "winking", category: "quan-lot" },
 ];
+
+const PRODUCT_PREFIX_RULES = {
+  AL: "ao-nguc",
+  QL: "quan-lot",
+  QG: "quan-gen",
+};
 
 const ttRoot = path.resolve(
   process.env.LOCAL_TT_ROOT ?? path.join(process.cwd(), ".."),
@@ -74,15 +82,44 @@ function normalizeForMatch(value) {
     .toLowerCase();
 }
 
-function inferModelCode(relativePath) {
+function isYearLike(candidate) {
+  const number = Number(candidate);
+  return Number.isInteger(number) && number >= YEAR_MIN && number <= YEAR_MAX;
+}
+
+function inferModelIdentity(relativePath) {
   const segments = relativePath.split(/[\\/]/).filter(Boolean);
 
+  // Prefix nghiệp vụ trong tên thư mục/file là nguồn chắc chắn nhất.
+  for (const segment of segments) {
+    const matches = segment.matchAll(
+      /(?:^|[^a-z0-9])(AL|QL|QG)[\s_-]*(\d{3,5})(?=$|[^0-9])/gi,
+    );
+
+    for (const match of matches) {
+      return {
+        modelCode: match[2],
+        productPrefix: match[1].toUpperCase(),
+        source: `path-prefix-${match[1].toUpperCase()}`,
+      };
+    }
+  }
+
+  // Fallback cho folder chỉ có mã số. Loại kích thước ảnh và năm/timestamp.
   for (const segment of segments) {
     const matches = segment.matchAll(/(?:^|\D)(\d{4})(?=\D|$)/g);
 
     for (const match of matches) {
       const candidate = match[1];
-      if (!RESERVED_NUMBER_TOKENS.has(candidate)) return candidate;
+
+      if (RESERVED_NUMBER_TOKENS.has(candidate)) continue;
+      if (isYearLike(candidate)) continue;
+
+      return {
+        modelCode: candidate,
+        productPrefix: null,
+        source: "bare-model-number",
+      };
     }
   }
 
@@ -91,22 +128,6 @@ function inferModelCode(relativePath) {
 
 function findModelRule(modelCode) {
   return MODEL_RULES.find((rule) => modelCode.startsWith(rule.prefix)) ?? null;
-}
-
-function hasQuanGenPrefix(relativePath, modelCode) {
-  const normalized = normalizeForMatch(relativePath).replace(/\\/g, "/");
-  const segments = normalized.split("/").filter(Boolean);
-
-  if (segments.some((segment) => /^qg(?:[\s_-]|\d|$)/i.test(segment))) {
-    return true;
-  }
-
-  if (!modelCode) return false;
-
-  return new RegExp(
-    `(?:^|[/\\s_-])qg[\\s_-]*${modelCode}(?=$|[^0-9])`,
-    "i",
-  ).test(normalized);
 }
 
 function inferBrand(relativePath, brandHint, modelCode) {
@@ -132,18 +153,38 @@ function inferBrand(relativePath, brandHint, modelCode) {
   return { value: "unclassified", source: "unclassified" };
 }
 
-function inferCategory(relativePath, categoryHint, modelCode) {
-  if (hasQuanGenPrefix(relativePath, modelCode)) {
-    return { value: "quan-gen", source: "qg-prefix" };
+function inferCategory(relativePath, categoryHint, modelIdentity) {
+  const explicitPrefix = modelIdentity.productPrefix;
+
+  if (explicitPrefix && PRODUCT_PREFIX_RULES[explicitPrefix]) {
+    return {
+      value: PRODUCT_PREFIX_RULES[explicitPrefix],
+      source: `path-prefix-${explicitPrefix}`,
+    };
   }
 
-  const rule = findModelRule(modelCode);
-  if (rule) {
-    return { value: rule.category, source: `model-prefix-${rule.prefix}` };
+  const normalized = normalizeForMatch(relativePath).replace(/\\/g, "/");
+
+  if (/(^|[^a-z])(quan[\s_-]*gen|gen[\s_-]*(bung|eo))([^a-z]|$)/i.test(normalized)) {
+    return { value: "quan-gen", source: "path-text" };
   }
 
+  if (/(^|[^a-z])(quan[\s_-]*lot|quanlot)([^a-z]|$)/i.test(normalized)) {
+    return { value: "quan-lot", source: "path-text" };
+  }
+
+  if (/(^|[^a-z])(ao[\s_-]*nguc|aonguc)([^a-z]|$)/i.test(normalized)) {
+    return { value: "ao-nguc", source: "path-text" };
+  }
+
+  // Folder nguồn QL là tín hiệu mạnh hơn đầu mã; QG ở trên đã được ưu tiên.
   if (categoryHint) {
     return { value: categoryHint, source: "source-folder" };
+  }
+
+  const rule = findModelRule(modelIdentity.modelCode);
+  if (rule) {
+    return { value: rule.category, source: `model-prefix-${rule.prefix}` };
   }
 
   return { value: "unclassified", source: "unclassified" };
@@ -204,9 +245,11 @@ function summarizeGroups(products, key) {
     report.set(name, current);
   }
 
-  return Object.fromEntries([...report.entries()].sort(([left], [right]) =>
-    left.localeCompare(right, "vi"),
-  ));
+  return Object.fromEntries(
+    [...report.entries()].sort(([left], [right]) =>
+      left.localeCompare(right, "vi"),
+    ),
+  );
 }
 
 const sourceReports = [];
@@ -233,7 +276,7 @@ for (const source of sourceDefinitions) {
   });
 
   for (const file of files) {
-    const modelCode = inferModelCode(file.relativePath);
+    const modelIdentity = inferModelIdentity(file.relativePath);
     const image = {
       source: source.name,
       relativeToSource: normalizePath(file.relativePath),
@@ -245,26 +288,33 @@ for (const source of sourceDefinitions) {
       modifiedAt: file.modifiedAt,
     };
 
-    if (!modelCode) {
+    if (!modelIdentity) {
       unmatchedFiles.push({
         ...image,
-        reason: "Không tìm thấy mã model 4 chữ số trong tên thư mục hoặc tên file.",
+        reason:
+          "Không tìm thấy tiền tố AL/QL/QG hoặc mã model hợp lệ; số năm và kích thước ảnh đã bị loại.",
       });
       continue;
     }
 
-    const brandResult = inferBrand(file.relativePath, source.brandHint, modelCode);
+    const brandResult = inferBrand(
+      file.relativePath,
+      source.brandHint,
+      modelIdentity.modelCode,
+    );
     const categoryResult = inferCategory(
       file.relativePath,
       source.categoryHint,
-      modelCode,
+      modelIdentity,
     );
 
-    const groupKey = `${brandResult.value}:${categoryResult.value}:${modelCode}`;
+    const groupKey = `${brandResult.value}:${categoryResult.value}:${modelIdentity.modelCode}`;
     const current = productGroups.get(groupKey) ?? {
       brand: brandResult.value,
       category: categoryResult.value,
-      modelCode,
+      modelCode: modelIdentity.modelCode,
+      productPrefixes: new Set(),
+      modelSources: new Set(),
       brandSources: new Set(),
       categorySources: new Set(),
       sources: new Set(),
@@ -272,6 +322,10 @@ for (const source of sourceDefinitions) {
       images: [],
     };
 
+    if (modelIdentity.productPrefix) {
+      current.productPrefixes.add(modelIdentity.productPrefix);
+    }
+    current.modelSources.add(modelIdentity.source);
     current.brandSources.add(brandResult.source);
     current.categorySources.add(categoryResult.source);
     current.sources.add(source.name);
@@ -284,6 +338,8 @@ for (const source of sourceDefinitions) {
 const products = [...productGroups.values()]
   .map((product) => ({
     ...product,
+    productPrefixes: [...product.productPrefixes].sort(),
+    modelSources: [...product.modelSources].sort(),
     brandSources: [...product.brandSources].sort(),
     categorySources: [...product.categorySources].sort(),
     sources: [...product.sources].sort(),
@@ -307,28 +363,37 @@ const products = [...productGroups.values()]
 const classificationWarnings = products
   .filter(
     (product) =>
-      product.brand === "unclassified" || product.category === "unclassified",
+      product.brand === "unclassified" ||
+      product.category === "unclassified" ||
+      product.modelSources.includes("bare-model-number"),
   )
   .map((product) => ({
     brand: product.brand,
     category: product.category,
     modelCode: product.modelCode,
+    productPrefixes: product.productPrefixes,
+    modelSources: product.modelSources,
+    brandSources: product.brandSources,
+    categorySources: product.categorySources,
     folders: product.folders,
     imageCount: product.images.length,
   }));
 
 const manifest = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   generatedAt: new Date().toISOString(),
   ttRoot,
   outputFile,
   classificationRules: {
+    productPrefixes: PRODUCT_PREFIX_RULES,
     modelPrefixes: MODEL_RULES,
-    quanGenPrefix: "QG",
+    ignoredYearRange: [YEAR_MIN, YEAR_MAX],
     priority: [
-      "QG prefix determines category quan-gen",
-      "source folder/path determines brand when explicit",
+      "AL/QL/QG prefix determines category and model",
+      "path/source folder determines brand when explicit",
+      "QL source folder determines quan-lot unless QG is present",
       "model prefix determines remaining brand/category",
+      "bare four-digit model is accepted only when it is not a year or image size",
     ],
   },
   priceFile: {
