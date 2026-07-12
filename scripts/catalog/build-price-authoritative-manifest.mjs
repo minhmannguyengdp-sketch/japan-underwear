@@ -19,6 +19,10 @@ const referencePath = path.resolve(
   process.env.LOCAL_PRICE_REFERENCE ??
     path.join(cwd, "data", "reference", "price-list-2026-04-02.json"),
 );
+const retainedWithoutImagesPath = path.resolve(
+  process.env.LOCAL_RETAINED_WITHOUT_IMAGES ??
+    path.join(cwd, "data", "reference", "catalog-retained-without-images.json"),
+);
 
 function productKey(value) {
   return `${value.brand}:${value.category}:${String(value.modelCode)}`;
@@ -127,9 +131,10 @@ if (rawBuild.status !== 0) {
   throw new Error(`Raw manifest builder thất bại với mã ${rawBuild.status}.`);
 }
 
-const [manifest, priceReference] = await Promise.all([
+const [manifest, priceReference, retainedReference] = await Promise.all([
   fs.readFile(manifestPath, "utf8").then(JSON.parse),
   fs.readFile(referencePath, "utf8").then(JSON.parse),
+  fs.readFile(retainedWithoutImagesPath, "utf8").then(JSON.parse),
 ]);
 
 const priceByKey = new Map();
@@ -200,9 +205,55 @@ for (const product of manifest.products ?? []) {
     resolutionReasons: [],
     priceRows: identity.rows,
     identitySource: "price-reference",
+    retainedWithoutImages: false,
   };
   mergeProduct(current, product, identity, resolved.reason);
   canonicalByKey.set(key, current);
+}
+
+const retainedNoImageProducts = [];
+for (const retained of retainedReference.products ?? []) {
+  const key = productKey(retained);
+  const identity = priceByKey.get(key);
+  if (!identity) {
+    throw new Error(`Danh sách giữ lại tham chiếu product không có trong bảng giá: ${key}.`);
+  }
+
+  const existing = canonicalByKey.get(key);
+  if (existing) {
+    existing.retainedWithoutImages = false;
+    existing.retentionReason = retained.reason ?? null;
+    continue;
+  }
+
+  const product = {
+    brand: identity.brand,
+    category: identity.category,
+    modelCode: String(identity.modelCode),
+    productPrefixes: [],
+    modelSources: [],
+    brandSources: [],
+    categorySources: [],
+    sources: [],
+    folders: [],
+    images: [],
+    rawIdentities: [],
+    resolutionReasons: ["owner-reviewed-retain-without-images"],
+    priceRows: identity.rows,
+    identitySource: "price-reference-owner-reviewed",
+    retainedWithoutImages: true,
+    retentionReason: retained.reason ?? null,
+  };
+  canonicalByKey.set(key, product);
+  retainedNoImageProducts.push({
+    key,
+    brand: identity.brand,
+    category: identity.category,
+    modelCode: String(identity.modelCode),
+    priceRows: identity.rows,
+    reason: retained.reason ?? null,
+    disposition: "active-owner-reviewed-without-category-image",
+  });
 }
 
 const products = [...canonicalByKey.values()].sort((left, right) =>
@@ -230,18 +281,20 @@ const matchedImageCount = products.reduce(
 
 const canonicalManifest = {
   ...manifest,
-  schemaVersion: 6,
+  schemaVersion: 7,
   generatedAt: new Date().toISOString(),
   classificationRules: {
     ...manifest.classificationRules,
     authority: "price-list",
-    activeCatalogRule: "intersection(price-list, products-with-images)",
+    activeCatalogRule:
+      "intersection(price-list, products-with-images) plus owner-reviewed retained products",
     priority: [
       "price list determines canonical brand + category + model",
       "AL/QL/QG prefix disambiguates category when the price list has multiple candidates",
       "path/source folder is evidence only, never authoritative",
       "model prefix is fallback evidence only",
-      "price-list products without images are omitted as possible discontinued models",
+      "price-list products without images are omitted unless explicitly retained by owner review",
+      "retained products do not borrow images from another category automatically",
       "image products absent from the price list are excluded from the active catalog",
     ],
   },
@@ -251,20 +304,26 @@ const canonicalManifest = {
     effectiveDate: priceReference.effectiveDate,
     authoritative: true,
   },
+  retainedWithoutImagesReference: {
+    path: retainedWithoutImagesPath,
+    schemaVersion: retainedReference.schemaVersion,
+  },
   summary: {
     ...manifest.summary,
     rawProductGroupCount: Number(manifest.summary?.productGroupCount ?? 0),
     rawMatchedImageCount: Number(manifest.summary?.matchedImageCount ?? 0),
     productGroupCount: products.length,
     matchedImageCount,
+    retainedWithoutImagesCount: retainedNoImageProducts.length,
     excludedImageOnlyProductCount: excludedImageProducts.length,
     unresolvedImageProductCount: unresolvedImageProducts.length,
     priceProductCount: priceByKey.size,
     priceProductsWithoutImagesCount: priceProductsWithoutImages.length,
     classificationWarningCount: unresolvedImageProducts.length,
-    activeCatalogDefinition: "price-list-and-images",
+    activeCatalogDefinition: "price-list-and-images-plus-reviewed-retention",
   },
   products,
+  retainedNoImageProducts,
   excludedImageProducts,
   unresolvedImageProducts,
   priceProductsWithoutImages,
@@ -291,6 +350,7 @@ await fs.writeFile(manifestPath, `${JSON.stringify(canonicalManifest, null, 2)}\
 
 console.log("\n=== Manifest theo bảng giá ===");
 console.log(`Catalog active: ${products.length} model / ${matchedImageCount} ảnh.`);
+console.log(`Giữ theo xác nhận dù chưa có ảnh đúng nhóm: ${retainedNoImageProducts.length} model.`);
 console.log(
   `Bỏ vì có ảnh nhưng không có trong bảng giá: ${excludedImageProducts.length} model.`,
 );
