@@ -6,18 +6,28 @@
     "dev": "node scripts/dev-server.mjs",
     "build": "next build",
     "start": "node scripts/start-server.mjs",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "catalog:manifest": "node scripts/build-local-catalog-manifest.mjs",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "dotenv": "latest",
+    "drizzle-orm": "latest",
     "next": "latest",
+    "pg": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "zod": "latest"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "latest",
     "@types/node": "latest",
+    "@types/pg": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "drizzle-kit": "latest",
     "eslint": "latest",
     "eslint-config-next": "latest",
     "postcss": "latest",
