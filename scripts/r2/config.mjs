@@ -10,12 +10,45 @@ const ACCESS_KEY_ID_PATTERN = /^[a-f0-9]{32}$/i;
 const SECRET_ACCESS_KEY_PATTERN = /^[a-f0-9]{64}$/i;
 const R2_JURISDICTIONS = new Set(["default", "eu", "fedramp"]);
 
-function requireEnv(name) {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`Thiếu biến môi trường bắt buộc: ${name}`);
+const ENV_ALIASES = {
+  accountId: ["R2_ACCOUNT_ID", "CLOUDFLARE_R2_ACCOUNT_ID"],
+  bucket: ["R2_BUCKET", "CLOUDFLARE_R2_BUCKET"],
+  accessKeyId: [
+    "R2_ACCESS_KEY_ID",
+    "CLOUDFLARE_R2_ACCESS_KEY_ID",
+    "CLOUDFLARE_R2_USER_ACCESS_KEY_ID",
+  ],
+  secretAccessKey: [
+    "R2_SECRET_ACCESS_KEY",
+    "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+    "CLOUDFLARE_R2_USER_SECRET_ACCESS_KEY",
+  ],
+  publicBaseUrl: [
+    "R2_PUBLIC_BASE_URL",
+    "CLOUDFLARE_R2_CUSTOM_DOMAIN",
+    "CLOUDFLARE_R2_PUBLIC_DEV_URL",
+  ],
+  endpoint: [
+    "R2_ENDPOINT",
+    "CLOUDFLARE_R2_ENDPOINT",
+    "CLOUDFLARE_R2_S3_API_URL",
+  ],
+};
+
+function firstEnv(names) {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return { value, source: name };
   }
-  return value;
+  return { value: null, source: null };
+}
+
+function requireAlias(label, names) {
+  const result = firstEnv(names);
+  if (!result.value) {
+    throw new Error(`Thiếu ${label}. Chấp nhận một trong: ${names.join(", ")}.`);
+  }
+  return result;
 }
 
 function normalizePrefix(value) {
@@ -34,24 +67,28 @@ function parseConcurrency(value) {
   return parsed;
 }
 
+function normalizeEndpoint(rawEndpoint, source) {
+  let parsed;
+  try {
+    parsed = new URL(rawEndpoint);
+  } catch {
+    throw new Error(`${source} phải là URL HTTPS hợp lệ.`);
+  }
+
+  if (parsed.protocol !== "https:") {
+    throw new Error(`${source} bắt buộc dùng HTTPS.`);
+  }
+
+  return parsed.origin;
+}
+
 function resolveEndpoint(accountId) {
-  const customEndpoint = process.env.R2_ENDPOINT?.trim().replace(/\/+$/g, "");
-  if (customEndpoint) {
-    let parsed;
-    try {
-      parsed = new URL(customEndpoint);
-    } catch {
-      throw new Error("R2_ENDPOINT phải là URL HTTPS hợp lệ.");
-    }
-
-    if (parsed.protocol !== "https:") {
-      throw new Error("R2_ENDPOINT bắt buộc dùng HTTPS.");
-    }
-
+  const configured = firstEnv(ENV_ALIASES.endpoint);
+  if (configured.value) {
     return {
-      endpoint: customEndpoint,
+      endpoint: normalizeEndpoint(configured.value, configured.source),
       jurisdiction: "custom",
-      endpointSource: "R2_ENDPOINT",
+      endpointSource: configured.source,
     };
   }
 
@@ -61,7 +98,7 @@ function resolveEndpoint(accountId) {
 
   if (!R2_JURISDICTIONS.has(jurisdiction)) {
     throw new Error(
-      "R2_JURISDICTION chỉ nhận default, eu hoặc fedramp. Hoặc đặt R2_ENDPOINT đầy đủ.",
+      "R2_JURISDICTION chỉ nhận default, eu hoặc fedramp. Hoặc đặt R2_ENDPOINT/CLOUDFLARE_R2_ENDPOINT.",
     );
   }
 
@@ -73,31 +110,51 @@ function resolveEndpoint(accountId) {
   };
 }
 
+export function resolveR2Environment() {
+  const account = requireAlias("R2 Account ID", ENV_ALIASES.accountId);
+  const bucket = requireAlias("R2 bucket", ENV_ALIASES.bucket);
+  const access = requireAlias("R2 Access Key ID", ENV_ALIASES.accessKeyId);
+  const secret = requireAlias("R2 Secret Access Key", ENV_ALIASES.secretAccessKey);
+  const publicBase = firstEnv(ENV_ALIASES.publicBaseUrl);
+
+  return {
+    accountId: account.value,
+    bucket: bucket.value,
+    accessKeyId: access.value,
+    secretAccessKey: secret.value,
+    publicBaseUrl: publicBase.value?.replace(/\/+$/g, "") || null,
+    sources: {
+      accountId: account.source,
+      bucket: bucket.source,
+      accessKeyId: access.source,
+      secretAccessKey: secret.source,
+      publicBaseUrl: publicBase.source,
+    },
+  };
+}
+
 export function loadR2Config() {
-  const accountId = requireEnv("R2_ACCOUNT_ID");
+  const environment = resolveR2Environment();
+  const { accountId, bucket, accessKeyId, secretAccessKey, publicBaseUrl } = environment;
+
   if (!ACCOUNT_ID_PATTERN.test(accountId)) {
     throw new Error(
-      "R2_ACCOUNT_ID phải là Account ID 32 ký tự hex, không phải URL, Zone ID hay API token.",
+      `${environment.sources.accountId} phải là Account ID 32 ký tự hex, không phải URL, Zone ID hay API token.`,
     );
   }
 
-  const bucket = requireEnv("R2_BUCKET");
-  const accessKeyId = requireEnv("R2_ACCESS_KEY_ID");
   if (!ACCESS_KEY_ID_PATTERN.test(accessKeyId)) {
     throw new Error(
-      "R2_ACCESS_KEY_ID phải là Access Key ID R2 gồm đúng 32 ký tự hex.",
+      `${environment.sources.accessKeyId} phải là Access Key ID R2 gồm đúng 32 ký tự hex.`,
     );
   }
 
-  const secretAccessKey = requireEnv("R2_SECRET_ACCESS_KEY");
   if (!SECRET_ACCESS_KEY_PATTERN.test(secretAccessKey)) {
     throw new Error(
-      "R2_SECRET_ACCESS_KEY phải là Secret Access Key R2 gồm đúng 64 ký tự hex. Key hiện tại có thể bị thiếu ký tự hoặc bị dotenv cắt.",
+      `${environment.sources.secretAccessKey} phải là Secret Access Key R2 gồm đúng 64 ký tự hex.`,
     );
   }
 
-  const publicBaseUrl =
-    process.env.R2_PUBLIC_BASE_URL?.trim().replace(/\/+$/g, "") || null;
   const prefix = normalizePrefix(process.env.R2_PREFIX);
   const concurrency = parseConcurrency(process.env.R2_UPLOAD_CONCURRENCY);
   const { endpoint, jurisdiction, endpointSource } = resolveEndpoint(accountId);
@@ -121,6 +178,7 @@ export function loadR2Config() {
     publicBaseUrl,
     prefix,
     concurrency,
+    sources: environment.sources,
     client,
   };
 }
