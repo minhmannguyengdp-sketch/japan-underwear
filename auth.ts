@@ -8,7 +8,6 @@ import {
   authAccounts,
   authSessions,
   users,
-  userRoles,
   type AppRole,
   type UserStatus,
 } from "@/db/auth-schema";
@@ -69,7 +68,8 @@ async function loadUserAuthorization(userId: string) {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: lazyAdapter,
   secret: process.env.AUTH_SECRET,
-  trustHost: process.env.AUTH_TRUST_HOST === "true",
+  trustHost:
+    process.env.NODE_ENV !== "production" || process.env.AUTH_TRUST_HOST === "true",
   session: {
     strategy: "database",
     maxAge: 30 * 24 * 60 * 60,
