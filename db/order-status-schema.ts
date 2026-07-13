@@ -59,6 +59,10 @@ export const orderStatusEvents = catalogSchema.table(
       sql`${table.reason} is null or char_length(btrim(${table.reason})) between 1 and 1000`,
     ),
     check(
+      "order_status_events_cancel_reason_chk",
+      sql`${table.toStatus} <> 'cancelled' or ${table.reason} is not null`,
+    ),
+    check(
       "order_status_events_idempotency_nonempty_chk",
       sql`${table.idempotencyKey} is null or char_length(btrim(${table.idempotencyKey})) between 1 and 160`,
     ),
