@@ -19,10 +19,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Verify toolchain
+        shell: bash
+        run: |
+          test "$(node --version)" = "v22.23.1"
+          test "$(npm --version)" = "10.9.8"
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Lint
         shell: bash
