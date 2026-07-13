@@ -82,16 +82,19 @@ async function findUser(email, forUpdate = false) {
              auth_user.status,
              auth_user.last_login_at,
              auth_user.created_at,
-             COALESCE(
-               array_agg(role.role ORDER BY role.role)
-                 FILTER (WHERE role.role IS NOT NULL),
-               ARRAY[]::text[]
+             ARRAY(
+               SELECT role.role
+               FROM japan_underwear.user_roles AS role
+               WHERE role.user_id = auth_user.id
+               ORDER BY role.role
              ) AS roles,
-             (SELECT count(*)::integer FROM japan_underwear.auth_sessions AS session WHERE session.user_id = auth_user.id) AS session_count
+             (
+               SELECT count(*)::integer
+               FROM japan_underwear.auth_sessions AS session
+               WHERE session.user_id = auth_user.id
+             ) AS session_count
       FROM japan_underwear.users AS auth_user
-      LEFT JOIN japan_underwear.user_roles AS role ON role.user_id = auth_user.id
       WHERE lower(auth_user.email) = $1
-      GROUP BY auth_user.id
       ${forUpdate ? "FOR UPDATE OF auth_user" : ""}
     `,
     [email],
