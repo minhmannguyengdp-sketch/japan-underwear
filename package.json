@@ -27,6 +27,7 @@
     "db:repair-enum": "node scripts/db/repair-catalog-enum.mjs",
     "db:repair-product-identity": "node scripts/db/apply-product-identity.mjs",
     "db:repair-order-variant": "node scripts/db/apply-order-variant-identity.mjs",
+    "db:repair-server-cart": "node scripts/db/apply-server-cart-orders.mjs",
     "db:verify": "node scripts/db/verify-catalog-migration.mjs",
     "db:studio": "drizzle-kit studio"
   },
