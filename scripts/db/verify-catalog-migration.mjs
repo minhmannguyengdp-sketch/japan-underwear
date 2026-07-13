@@ -30,9 +30,28 @@ const EXPECTED_MIGRATIONS = [
   1783853000000,
   1783860000000,
   1783865000000,
+  1783870000000,
 ];
-const connectionString = process.env.DATABASE_URL?.trim();
 
+const REQUIRED_INDEXES = [
+  "cart_items_cart_variant_color_uidx",
+  "carts_token_uidx",
+  "order_items_order_variant_color_uidx",
+  "orders_order_code_uidx",
+  "orders_source_cart_uidx",
+  "product_variants_product_size_cup_uidx",
+  "product_variants_product_size_no_cup_uidx",
+];
+
+const REQUIRED_ORDER_LOCATION_COLUMNS = [
+  "delivery_latitude",
+  "delivery_longitude",
+  "delivery_accuracy_meters",
+  "location_collected_at",
+  "location_source",
+];
+
+const connectionString = process.env.DATABASE_URL?.trim();
 if (!connectionString) {
   console.error("Thiếu DATABASE_URL trong .env.local hoặc .env.");
   process.exit(1);
@@ -62,11 +81,9 @@ async function main() {
       WHERE schemaname = 'japan_underwear'
       ORDER BY tablename
     `);
-
-    const actualTables = tableResult.rows.map((row) => row.tablename);
-    const missingTables = EXPECTED_TABLES.filter((tableName) => !actualTables.includes(tableName));
-    const unexpectedTables = actualTables.filter((tableName) => !EXPECTED_TABLES.includes(tableName));
-
+    const actualTables = tableResult.rows.map((row) => String(row.tablename));
+    const missingTables = EXPECTED_TABLES.filter((name) => !actualTables.includes(name));
+    const unexpectedTables = actualTables.filter((name) => !EXPECTED_TABLES.includes(name));
     if (missingTables.length > 0 || unexpectedTables.length > 0) {
       throw new Error(
         `Catalog table mismatch. Missing: ${missingTables.join(", ") || "none"}. Unexpected: ${unexpectedTables.join(", ") || "none"}.`,
@@ -74,23 +91,21 @@ async function main() {
     }
 
     const enumResult = await client.query(`
-      SELECT namespace.nspname AS schema_name,
-             type_definition.typname AS type_name
+      SELECT namespace.nspname AS schema_name
       FROM pg_type AS type_definition
       JOIN pg_namespace AS namespace
         ON namespace.oid = type_definition.typnamespace
       WHERE type_definition.typname = 'catalog_import_status'
       ORDER BY namespace.nspname
     `);
-
-    const enumSchemas = enumResult.rows.map((row) => row.schema_name);
+    const enumSchemas = enumResult.rows.map((row) => String(row.schema_name));
     if (enumSchemas.length !== 1 || enumSchemas[0] !== "japan_underwear") {
       throw new Error(
         `Expected only japan_underwear.catalog_import_status, found: ${enumSchemas.join(", ") || "none"}.`,
       );
     }
 
-    const columnTypeResult = await client.query(`
+    const importStatusResult = await client.query(`
       SELECT type_namespace.nspname AS type_schema,
              type_definition.typname AS type_name
       FROM pg_attribute AS attribute
@@ -108,18 +123,17 @@ async function main() {
         AND attribute.attnum > 0
         AND NOT attribute.attisdropped
     `);
-
     if (
-      columnTypeResult.rowCount !== 1 ||
-      columnTypeResult.rows[0].type_schema !== "japan_underwear" ||
-      columnTypeResult.rows[0].type_name !== "catalog_import_status"
+      importStatusResult.rowCount !== 1 ||
+      importStatusResult.rows[0].type_schema !== "japan_underwear" ||
+      importStatusResult.rows[0].type_name !== "catalog_import_status"
     ) {
       throw new Error(
         "catalog_import_runs.status does not use japan_underwear.catalog_import_status.",
       );
     }
 
-    const identityResult = await client.query(`
+    const productIdentityResult = await client.query(`
       SELECT
         to_regclass('japan_underwear.products_brand_category_model_uidx') AS identity_index,
         to_regclass('japan_underwear.products_brand_model_uidx') AS legacy_index,
@@ -129,15 +143,19 @@ async function main() {
         AND information_schema.columns.table_name = 'products'
         AND information_schema.columns.column_name = 'category_id'
     `);
-
-    if (identityResult.rowCount !== 1) {
+    if (productIdentityResult.rowCount !== 1) {
       throw new Error("Không đọc được cấu trúc products.category_id.");
     }
-
-    const identity = identityResult.rows[0];
-    if (!identity.identity_index) throw new Error("Missing products_brand_category_model_uidx.");
-    if (identity.legacy_index) throw new Error("Legacy products_brand_model_uidx still exists.");
-    if (identity.category_nullable !== "NO") throw new Error("products.category_id must be NOT NULL.");
+    const productIdentity = productIdentityResult.rows[0];
+    if (!productIdentity.identity_index) {
+      throw new Error("Missing products_brand_category_model_uidx.");
+    }
+    if (productIdentity.legacy_index) {
+      throw new Error("Legacy products_brand_model_uidx still exists.");
+    }
+    if (productIdentity.category_nullable !== "NO") {
+      throw new Error("products.category_id must be NOT NULL.");
+    }
 
     const variantColumnResult = await client.query(`
       SELECT column_name, is_nullable
@@ -148,7 +166,7 @@ async function main() {
       ORDER BY column_name
     `);
     const variantColumns = new Map(
-      variantColumnResult.rows.map((row) => [row.column_name, row.is_nullable]),
+      variantColumnResult.rows.map((row) => [String(row.column_name), String(row.is_nullable)]),
     );
     if (variantColumns.has("color_id")) {
       throw new Error("product_variants.color_id must not exist after migration 0003.");
@@ -160,27 +178,17 @@ async function main() {
       throw new Error("product_variants.cup_code must exist and be nullable.");
     }
 
-    const requiredIndexes = [
-      "cart_items_cart_variant_color_uidx",
-      "carts_token_uidx",
-      "order_items_order_variant_color_uidx",
-      "orders_order_code_uidx",
-      "orders_source_cart_uidx",
-      "product_variants_product_size_cup_uidx",
-      "product_variants_product_size_no_cup_uidx",
-    ];
     const indexResult = await client.query(
       `
         SELECT indexname
         FROM pg_indexes
         WHERE schemaname = 'japan_underwear'
           AND indexname = ANY($1::text[])
-        ORDER BY indexname
       `,
-      [requiredIndexes],
+      [REQUIRED_INDEXES],
     );
-    const indexes = new Set(indexResult.rows.map((row) => row.indexname));
-    const missingIndexes = requiredIndexes.filter((indexName) => !indexes.has(indexName));
+    const indexes = new Set(indexResult.rows.map((row) => String(row.indexname)));
+    const missingIndexes = REQUIRED_INDEXES.filter((name) => !indexes.has(name));
     if (missingIndexes.length > 0) {
       throw new Error(`Missing required indexes: ${missingIndexes.join(", ")}.`);
     }
@@ -208,7 +216,6 @@ async function main() {
           'cart_items_selection_same_product_trg',
           'order_items_selection_same_product_trg'
         )
-      ORDER BY trigger_name
     `);
     const triggers = new Set(
       triggerResult.rows.map((row) => `${row.event_object_table}:${row.trigger_name}`),
@@ -220,7 +227,7 @@ async function main() {
       throw new Error("Missing order_items selection identity trigger.");
     }
 
-    const orderColumnResult = await client.query(`
+    const lineColumnResult = await client.query(`
       SELECT table_name, column_name, is_nullable
       FROM information_schema.columns
       WHERE table_schema = 'japan_underwear'
@@ -228,12 +235,11 @@ async function main() {
           (table_name = 'cart_items' AND column_name IN ('product_variant_id', 'color_id', 'quantity'))
           OR (table_name = 'order_items' AND column_name IN ('product_variant_id', 'color_id', 'quantity'))
         )
-      ORDER BY table_name, column_name
     `);
-    const orderColumns = new Map(
-      orderColumnResult.rows.map((row) => [
+    const lineColumns = new Map(
+      lineColumnResult.rows.map((row) => [
         `${row.table_name}.${row.column_name}`,
-        row.is_nullable,
+        String(row.is_nullable),
       ]),
     );
     for (const key of [
@@ -244,15 +250,34 @@ async function main() {
       "order_items.color_id",
       "order_items.quantity",
     ]) {
-      if (orderColumns.get(key) !== "NO") {
+      if (lineColumns.get(key) !== "NO") {
         throw new Error(`${key} must exist and be NOT NULL.`);
+      }
+    }
+
+    const locationColumnResult = await client.query(
+      `
+        SELECT column_name, is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = 'japan_underwear'
+          AND table_name = 'orders'
+          AND column_name = ANY($1::text[])
+      `,
+      [REQUIRED_ORDER_LOCATION_COLUMNS],
+    );
+    const locationColumns = new Map(
+      locationColumnResult.rows.map((row) => [String(row.column_name), String(row.is_nullable)]),
+    );
+    for (const columnName of REQUIRED_ORDER_LOCATION_COLUMNS) {
+      if (locationColumns.get(columnName) !== "YES") {
+        throw new Error(`orders.${columnName} must exist and be nullable.`);
       }
     }
 
     const migrationTableResult = await client.query(
       "SELECT to_regclass('drizzle.__drizzle_migrations') AS table_name",
     );
-    if (!migrationTableResult.rows[0].table_name) {
+    if (!migrationTableResult.rows[0]?.table_name) {
       throw new Error("drizzle.__drizzle_migrations does not exist.");
     }
 
@@ -277,6 +302,7 @@ async function main() {
     console.log("Server cart identity: cart + product_variant_id + color_id.");
     console.log("Order item identity: order + product_variant_id + color_id; quantity stored on the row.");
     console.log("Order lifecycle audit table: japan_underwear.order_status_events.");
+    console.log("Order delivery location: optional all-or-none snapshot on orders.");
     console.log(
       `Migration records: ${appliedMigrations.length} (${EXPECTED_MIGRATIONS.length} required records present).`,
     );
