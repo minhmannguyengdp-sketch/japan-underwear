@@ -9,6 +9,9 @@ loadEnv({ path: path.resolve(cwd, ".env.local"), override: true, quiet: true });
 loadEnv({ path: path.resolve(cwd, ".env"), override: false, quiet: true });
 
 const EXPECTED_TABLES = [
+  "auth_accounts",
+  "auth_audit_events",
+  "auth_sessions",
   "brands",
   "cart_items",
   "carts",
@@ -21,6 +24,8 @@ const EXPECTED_TABLES = [
   "product_images",
   "product_variants",
   "products",
+  "user_roles",
+  "users",
 ];
 
 const EXPECTED_MIGRATIONS = [
@@ -31,6 +36,7 @@ const EXPECTED_MIGRATIONS = [
   1783860000000,
   1783865000000,
   1783870000000,
+  1783875000000,
 ];
 
 const REQUIRED_INDEXES = [
@@ -303,6 +309,7 @@ async function main() {
     console.log("Order item identity: order + product_variant_id + color_id; quantity stored on the row.");
     console.log("Order lifecycle audit table: japan_underwear.order_status_events.");
     console.log("Order delivery location: optional all-or-none snapshot on orders.");
+    console.log("Auth identity: internal UUID + external account mapping + database sessions.");
     console.log(
       `Migration records: ${appliedMigrations.length} (${EXPECTED_MIGRATIONS.length} required records present).`,
     );

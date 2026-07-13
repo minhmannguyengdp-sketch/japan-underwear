@@ -131,6 +131,11 @@ run(
   [path.resolve(cwd, "scripts", "db", "apply-checkout-geolocation.mjs")],
   "Checkout geolocation migration",
 );
+run(
+  process.execPath,
+  [path.resolve(cwd, "scripts", "db", "apply-auth-foundation.mjs")],
+  "Auth foundation migration",
+);
 
 let pending = await readPendingMigrations();
 if (pending.length === 0) {
