@@ -29,6 +29,7 @@ const REQUIRED_CONSTRAINTS = [
   "order_status_events_actor_source_nonempty_chk",
   "order_status_events_actor_label_nonempty_chk",
   "order_status_events_reason_nonempty_chk",
+  "order_status_events_cancel_reason_chk",
   "order_status_events_idempotency_nonempty_chk",
 ];
 const REQUIRED_TRIGGERS = [
@@ -263,6 +264,7 @@ async function main() {
     console.log("Order status lifecycle migration OK.");
     console.log("Allowed transitions: submitted -> confirmed | cancelled.");
     console.log("confirmed và cancelled là trạng thái cuối.");
+    console.log("Cancellation reason is required by DB guard.");
     console.log("Migration record 0005 reconciled.");
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
