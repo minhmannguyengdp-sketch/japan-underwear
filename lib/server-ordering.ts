@@ -12,6 +12,8 @@ import type {
 } from "@/lib/order-types";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_LOCATION_AGE_MS = 30 * 60 * 1000;
+const MAX_LOCATION_FUTURE_MS = 5 * 60 * 1000;
 
 export class OrderingError extends Error {
   constructor(
@@ -374,10 +376,49 @@ function makeOrderCode() {
   return `TT-${date}-${randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
+function normalizeCheckoutLocation(location: CheckoutInput["location"]) {
+  if (!location) return null;
+
+  const collectedAt = Date.parse(location.collectedAt);
+  const now = Date.now();
+  const valid =
+    location.source === "browser_geolocation" &&
+    Number.isFinite(location.latitude) &&
+    location.latitude >= -90 &&
+    location.latitude <= 90 &&
+    Number.isFinite(location.longitude) &&
+    location.longitude >= -180 &&
+    location.longitude <= 180 &&
+    Number.isFinite(location.accuracyMeters) &&
+    location.accuracyMeters > 0 &&
+    location.accuracyMeters <= 100000 &&
+    Number.isFinite(collectedAt) &&
+    collectedAt >= now - MAX_LOCATION_AGE_MS &&
+    collectedAt <= now + MAX_LOCATION_FUTURE_MS;
+
+  if (!valid) {
+    throw new OrderingError(
+      "Vị trí giao hàng không hợp lệ hoặc đã quá cũ. Vui lòng lấy lại vị trí.",
+      400,
+      "invalid_checkout_location",
+    );
+  }
+
+  return {
+    latitude: location.latitude,
+    longitude: location.longitude,
+    accuracyMeters: location.accuracyMeters,
+    collectedAt: new Date(collectedAt).toISOString(),
+    source: location.source,
+  };
+}
+
 export async function createServerOrder(
   requestedToken: string | null,
   input: CheckoutInput,
 ): Promise<CreatedOrder> {
+  const location = normalizeCheckoutLocation(input.location);
+
   return withTransaction(async (client) => {
     const handle = await findActiveCartForUpdate(client, requestedToken);
     if (!handle) {
@@ -460,10 +501,18 @@ export async function createServerOrder(
           customer_phone,
           delivery_address,
           note,
+          delivery_latitude,
+          delivery_longitude,
+          delivery_accuracy_meters,
+          location_collected_at,
+          location_source,
           subtotal,
           currency
         )
-        VALUES ($1, $2::uuid, 'submitted', $3, $4, $5, $6, $7, $8)
+        VALUES (
+          $1, $2::uuid, 'submitted', $3, $4, $5, $6,
+          $7, $8, $9, $10::timestamptz, $11, $12, $13
+        )
         RETURNING id, created_at
       `,
       [
@@ -473,6 +522,11 @@ export async function createServerOrder(
         input.customerPhone.trim(),
         input.deliveryAddress?.trim() || null,
         input.note?.trim() || null,
+        location?.latitude ?? null,
+        location?.longitude ?? null,
+        location?.accuracyMeters ?? null,
+        location?.collectedAt ?? null,
+        location?.source ?? null,
         subtotal,
         currency,
       ],
@@ -537,6 +591,7 @@ export async function createServerOrder(
       subtotal,
       currency,
       itemCount: itemResult.rows.reduce((sum, row) => sum + Number(row.quantity), 0),
+      locationCaptured: Boolean(location),
       createdAt: new Date(orderResult.rows[0].created_at).toISOString(),
     };
   });

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -212,6 +213,11 @@ export const orders = catalogSchema.table(
     customerPhone: text("customer_phone").notNull(),
     deliveryAddress: text("delivery_address"),
     note: text("note"),
+    deliveryLatitude: doublePrecision("delivery_latitude"),
+    deliveryLongitude: doublePrecision("delivery_longitude"),
+    deliveryAccuracyMeters: doublePrecision("delivery_accuracy_meters"),
+    locationCollectedAt: timestamp("location_collected_at", { withTimezone: true }),
+    locationSource: text("location_source").$type<"browser_geolocation">(),
     subtotal: integer("subtotal").notNull(),
     currency: text("currency").notNull().default("VND"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -226,6 +232,36 @@ export const orders = catalogSchema.table(
     check("orders_customer_name_nonempty_chk", sql`btrim(${table.customerName}) <> ''`),
     check("orders_customer_phone_nonempty_chk", sql`btrim(${table.customerPhone}) <> ''`),
     check("orders_subtotal_chk", sql`${table.subtotal} >= 0`),
+    check(
+      "orders_location_all_or_none_chk",
+      sql`num_nonnulls(
+        ${table.deliveryLatitude},
+        ${table.deliveryLongitude},
+        ${table.deliveryAccuracyMeters},
+        ${table.locationCollectedAt},
+        ${table.locationSource}
+      ) in (0, 5)`,
+    ),
+    check(
+      "orders_location_latitude_chk",
+      sql`${table.deliveryLatitude} is null or ${table.deliveryLatitude} between -90 and 90`,
+    ),
+    check(
+      "orders_location_longitude_chk",
+      sql`${table.deliveryLongitude} is null or ${table.deliveryLongitude} between -180 and 180`,
+    ),
+    check(
+      "orders_location_accuracy_chk",
+      sql`${table.deliveryAccuracyMeters} is null or (${table.deliveryAccuracyMeters} > 0 and ${table.deliveryAccuracyMeters} <= 100000)`,
+    ),
+    check(
+      "orders_location_collected_at_chk",
+      sql`${table.locationCollectedAt} is null or ${table.locationCollectedAt} >= timestamptz '2000-01-01 00:00:00+00'`,
+    ),
+    check(
+      "orders_location_source_chk",
+      sql`${table.locationSource} is null or ${table.locationSource} = 'browser_geolocation'`,
+    ),
   ],
 );
 

@@ -29,11 +29,20 @@ export type AddCartItemInput = {
   quantity: number;
 };
 
+export type CheckoutLocationInput = {
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number;
+  collectedAt: string;
+  source: "browser_geolocation";
+};
+
 export type CheckoutInput = {
   customerName: string;
   customerPhone: string;
   deliveryAddress?: string | null;
   note?: string | null;
+  location?: CheckoutLocationInput | null;
 };
 
 export type CreatedOrder = {
@@ -43,5 +52,6 @@ export type CreatedOrder = {
   subtotal: number;
   currency: string;
   itemCount: number;
+  locationCaptured: boolean;
   createdAt: string;
 };
