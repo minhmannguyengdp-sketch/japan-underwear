@@ -15,11 +15,18 @@ CREATE TABLE IF NOT EXISTS "japan_underwear"."order_status_events" (
     ("from_status" IS NULL AND "to_status" IN ('submitted', 'confirmed', 'cancelled'))
     OR ("from_status" = 'submitted' AND "to_status" IN ('confirmed', 'cancelled'))
   ),
-  CONSTRAINT "order_status_events_actor_source_nonempty_chk" CHECK (btrim("actor_source") <> ''),
-  CONSTRAINT "order_status_events_actor_label_nonempty_chk" CHECK (btrim("actor_label") <> ''),
-  CONSTRAINT "order_status_events_reason_nonempty_chk" CHECK ("reason" IS NULL OR btrim("reason") <> ''),
+  CONSTRAINT "order_status_events_actor_source_nonempty_chk" CHECK (
+    char_length(btrim("actor_source")) BETWEEN 1 AND 80
+  ),
+  CONSTRAINT "order_status_events_actor_label_nonempty_chk" CHECK (
+    char_length(btrim("actor_label")) BETWEEN 1 AND 120
+  ),
+  CONSTRAINT "order_status_events_reason_nonempty_chk" CHECK (
+    "reason" IS NULL OR char_length(btrim("reason")) BETWEEN 1 AND 1000
+  ),
   CONSTRAINT "order_status_events_idempotency_nonempty_chk" CHECK (
-    "idempotency_key" IS NULL OR btrim("idempotency_key") <> ''
+    "idempotency_key" IS NULL
+    OR char_length(btrim("idempotency_key")) BETWEEN 1 AND 160
   )
 );
 --> statement-breakpoint
@@ -80,11 +87,11 @@ BEGIN
   END IF;
 
   event_actor_source := NULLIF(
-    current_setting('japan_underwear.order_status_actor_source', true),
+    btrim(current_setting('japan_underwear.order_status_actor_source', true)),
     ''
   );
   event_actor_label := NULLIF(
-    current_setting('japan_underwear.order_status_actor_label', true),
+    btrim(current_setting('japan_underwear.order_status_actor_label', true)),
     ''
   );
   event_reason := NULLIF(
@@ -193,8 +200,10 @@ DECLARE
   resolved_order_code text;
   resolved_current_status text;
   resolved_event_id uuid;
+  resolved_event_from_status text;
   resolved_event_to_status text;
   resolved_event_created_at timestamp with time zone;
+  normalized_to_status text := lower(NULLIF(btrim(p_to_status), ''));
   normalized_actor_source text := NULLIF(btrim(p_actor_source), '');
   normalized_actor_label text := NULLIF(btrim(p_actor_label), '');
   normalized_reason text := NULLIF(btrim(p_reason), '');
@@ -203,13 +212,25 @@ BEGIN
   IF NULLIF(btrim(p_order_code), '') IS NULL THEN
     RAISE EXCEPTION 'order_code is required.' USING ERRCODE = '22023';
   END IF;
-  IF p_to_status NOT IN ('confirmed', 'cancelled') THEN
+  IF normalized_to_status IS NULL
+     OR normalized_to_status NOT IN ('confirmed', 'cancelled') THEN
     RAISE EXCEPTION 'Target status must be confirmed or cancelled.' USING ERRCODE = '22023';
   END IF;
   IF normalized_actor_source IS NULL OR normalized_actor_label IS NULL THEN
     RAISE EXCEPTION 'actor_source and actor_label are required.' USING ERRCODE = '22023';
   END IF;
-  IF p_to_status = 'cancelled' AND normalized_reason IS NULL THEN
+  IF char_length(normalized_actor_source) > 80
+     OR char_length(normalized_actor_label) > 120 THEN
+    RAISE EXCEPTION 'actor_source or actor_label is too long.' USING ERRCODE = '22023';
+  END IF;
+  IF normalized_reason IS NOT NULL AND char_length(normalized_reason) > 1000 THEN
+    RAISE EXCEPTION 'reason is too long.' USING ERRCODE = '22023';
+  END IF;
+  IF normalized_idempotency_key IS NOT NULL
+     AND char_length(normalized_idempotency_key) > 160 THEN
+    RAISE EXCEPTION 'idempotency_key is too long.' USING ERRCODE = '22023';
+  END IF;
+  IF normalized_to_status = 'cancelled' AND normalized_reason IS NULL THEN
     RAISE EXCEPTION 'Cancellation reason is required.' USING ERRCODE = '22023';
   END IF;
 
@@ -225,15 +246,16 @@ BEGIN
   END IF;
 
   IF normalized_idempotency_key IS NOT NULL THEN
-    SELECT event.id, event.to_status, event.created_at
-      INTO resolved_event_id, resolved_event_to_status, resolved_event_created_at
+    SELECT event.id, event.from_status, event.to_status, event.created_at
+      INTO resolved_event_id, resolved_event_from_status, resolved_event_to_status,
+           resolved_event_created_at
     FROM "japan_underwear"."order_status_events" AS event
     WHERE event.order_id = resolved_order_id
       AND event.idempotency_key = normalized_idempotency_key
     LIMIT 1;
 
     IF resolved_event_id IS NOT NULL THEN
-      IF resolved_event_to_status <> p_to_status THEN
+      IF resolved_event_to_status <> normalized_to_status THEN
         RAISE EXCEPTION 'Idempotency key was already used for status %.', resolved_event_to_status
           USING ERRCODE = '23505';
       END IF;
@@ -241,8 +263,8 @@ BEGIN
       RETURN QUERY SELECT
         resolved_order_id,
         resolved_order_code,
-        resolved_current_status,
-        resolved_current_status,
+        resolved_event_from_status,
+        resolved_event_to_status,
         false,
         true,
         resolved_event_id,
@@ -251,12 +273,12 @@ BEGIN
     END IF;
   END IF;
 
-  IF resolved_current_status = p_to_status THEN
-    SELECT event.id, event.created_at
-      INTO resolved_event_id, resolved_event_created_at
+  IF resolved_current_status = normalized_to_status THEN
+    SELECT event.id, event.from_status, event.created_at
+      INTO resolved_event_id, resolved_event_from_status, resolved_event_created_at
     FROM "japan_underwear"."order_status_events" AS event
     WHERE event.order_id = resolved_order_id
-      AND event.to_status = p_to_status
+      AND event.to_status = normalized_to_status
     ORDER BY event.created_at DESC, event.id DESC
     LIMIT 1;
 
@@ -299,7 +321,7 @@ BEGIN
   );
 
   UPDATE "japan_underwear"."orders"
-  SET status = p_to_status,
+  SET status = normalized_to_status,
       updated_at = now()
   WHERE id = resolved_order_id
     AND status = 'submitted';
@@ -312,7 +334,7 @@ BEGIN
     INTO resolved_event_id, resolved_event_created_at
   FROM "japan_underwear"."order_status_events" AS event
   WHERE event.order_id = resolved_order_id
-    AND event.to_status = p_to_status
+    AND event.to_status = normalized_to_status
     AND (
       normalized_idempotency_key IS NULL
       OR event.idempotency_key = normalized_idempotency_key
@@ -324,7 +346,7 @@ BEGIN
     resolved_order_id,
     resolved_order_code,
     resolved_current_status,
-    p_to_status,
+    normalized_to_status,
     true,
     false,
     resolved_event_id,
