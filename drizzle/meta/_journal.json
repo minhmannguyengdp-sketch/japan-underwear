@@ -36,6 +36,13 @@
       "when": 1783860000000,
       "tag": "0004_server_cart_orders",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783865000000,
+      "tag": "0005_order_status_lifecycle",
+      "breakpoints": true
     }
   ]
 }
