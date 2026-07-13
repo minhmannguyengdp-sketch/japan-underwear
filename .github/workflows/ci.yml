@@ -28,6 +28,29 @@ jobs:
           test "$(node --version)" = "v22.23.1"
           test "$(npm --version)" = "10.9.8"
 
+      - name: Verify lockfile portability
+        shell: bash
+        run: |
+          node <<'NODE'
+          const lock = require('./package-lock.json');
+          const required = [
+            'node_modules/@next/swc-linux-x64-gnu',
+            'node_modules/@next/swc-win32-x64-msvc',
+            'node_modules/@tailwindcss/oxide-linux-x64-gnu',
+            'node_modules/@tailwindcss/oxide-win32-x64-msvc',
+            'node_modules/@img/sharp-linux-x64',
+            'node_modules/@img/sharp-win32-x64',
+            'node_modules/lightningcss-linux-x64-gnu',
+            'node_modules/lightningcss-win32-x64-msvc',
+          ];
+
+          for (const key of required) {
+            if (!lock.packages?.[key]) {
+              throw new Error(`Missing portable optional dependency: ${key}`);
+            }
+          }
+          NODE
+
       - name: Install dependencies
         run: npm ci
 
