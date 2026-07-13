@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "rule": "Owner-reviewed exceptions retained in the active catalog even when no category-specific image is available.",
+  "products": [
+    {
+      "brand": "pensee",
+      "category": "quan-lot",
+      "modelCode": "9501",
+      "reason": "Owner confirmed this price-list product must remain active. Do not reuse the bra image automatically."
+    },
+    {
+      "brand": "pensee",
+      "category": "quan-lot",
+      "modelCode": "9514",
+      "reason": "Owner confirmed this price-list product must remain active. Do not reuse the bra image automatically."
+    },
+    {
+      "brand": "winking",
+      "category": "quan-lot",
+      "modelCode": "9108",
+      "reason": "Owner confirmed this price-list product must remain active. Do not reuse the bra image automatically."
+    }
+  ]
+}
