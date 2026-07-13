@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS "japan_underwear"."order_status_events" (
   CONSTRAINT "order_status_events_reason_nonempty_chk" CHECK (
     "reason" IS NULL OR char_length(btrim("reason")) BETWEEN 1 AND 1000
   ),
+  CONSTRAINT "order_status_events_cancel_reason_chk" CHECK (
+    "to_status" <> 'cancelled' OR "reason" IS NOT NULL
+  ),
   CONSTRAINT "order_status_events_idempotency_nonempty_chk" CHECK (
     "idempotency_key" IS NULL
     OR char_length(btrim("idempotency_key")) BETWEEN 1 AND 160
@@ -42,6 +45,8 @@ CREATE OR REPLACE FUNCTION "japan_underwear"."validate_order_status_transition"(
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  transition_reason text;
 BEGIN
   IF TG_OP = 'INSERT' THEN
     IF NEW.status <> 'submitted' THEN
@@ -54,7 +59,18 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF OLD.status = 'submitted' AND NEW.status IN ('confirmed', 'cancelled') THEN
+  IF OLD.status = 'submitted' AND NEW.status = 'confirmed' THEN
+    RETURN NEW;
+  END IF;
+
+  IF OLD.status = 'submitted' AND NEW.status = 'cancelled' THEN
+    transition_reason := NULLIF(
+      btrim(current_setting('japan_underwear.order_status_reason', true)),
+      ''
+    );
+    IF transition_reason IS NULL THEN
+      RAISE EXCEPTION 'Cancellation reason is required.' USING ERRCODE = '23514';
+    END IF;
     RETURN NEW;
   END IF;
 
@@ -237,7 +253,7 @@ BEGIN
   SELECT orders.id, orders.order_code, orders.status
     INTO resolved_order_id, resolved_order_code, resolved_current_status
   FROM "japan_underwear"."orders" AS orders
-  WHERE upper(orders.order_code) = upper(btrim(p_order_code))
+  WHERE orders.order_code = upper(btrim(p_order_code))
   LIMIT 1
   FOR UPDATE;
 
@@ -274,8 +290,8 @@ BEGIN
   END IF;
 
   IF resolved_current_status = normalized_to_status THEN
-    SELECT event.id, event.from_status, event.created_at
-      INTO resolved_event_id, resolved_event_from_status, resolved_event_created_at
+    SELECT event.id, event.created_at
+      INTO resolved_event_id, resolved_event_created_at
     FROM "japan_underwear"."order_status_events" AS event
     WHERE event.order_id = resolved_order_id
       AND event.to_status = normalized_to_status
