@@ -116,9 +116,17 @@ DECLARE
     NULLIF(current_setting('app.auth_actor', true), ''),
     'database'
   );
-  target_id uuid := COALESCE(NEW.user_id, OLD.user_id);
-  target_role text := COALESCE(NEW.role, OLD.role);
+  target_id uuid;
+  target_role text;
 BEGIN
+  IF TG_OP = 'INSERT' THEN
+    target_id := NEW.user_id;
+    target_role := NEW.role;
+  ELSE
+    target_id := OLD.user_id;
+    target_role := OLD.role;
+  END IF;
+
   INSERT INTO "japan_underwear"."auth_audit_events" (
     actor,
     action,
@@ -130,7 +138,11 @@ BEGIN
     target_id,
     jsonb_build_object('role', target_role)
   );
-  RETURN COALESCE(NEW, OLD);
+
+  IF TG_OP = 'INSERT' THEN
+    RETURN NEW;
+  END IF;
+  RETURN OLD;
 END;
 $$;
 --> statement-breakpoint
