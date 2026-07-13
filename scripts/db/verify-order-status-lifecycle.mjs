@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
@@ -51,6 +52,154 @@ const client = new Client({
   ssl: isLocalDatabase(connectionString) ? undefined : { rejectUnauthorized: false },
   connectionTimeoutMillis: 30_000,
 });
+
+function assertRuntime(condition, message) {
+  if (!condition) {
+    throw new Error(`Order status runtime verification failed: ${message}`);
+  }
+}
+
+async function verifyRuntimeGuards() {
+  const suffix = randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase();
+  const orderCode = `TT-20991231-${suffix}`;
+  const idempotencyKey = `db-verify-confirm-${suffix}`;
+  const terminalKey = `db-verify-terminal-${suffix}`;
+  let transactionOpen = false;
+
+  try {
+    await client.query("BEGIN");
+    transactionOpen = true;
+
+    const cartResult = await client.query(`
+      INSERT INTO japan_underwear.carts (status)
+      VALUES ('active')
+      RETURNING id
+    `);
+    const cartId = cartResult.rows[0]?.id;
+    assertRuntime(Boolean(cartId), "failed to create rollback-only cart fixture");
+
+    const orderResult = await client.query(
+      `
+        INSERT INTO japan_underwear.orders (
+          order_code,
+          source_cart_id,
+          status,
+          customer_name,
+          customer_phone,
+          subtotal,
+          currency
+        )
+        VALUES ($1, $2, 'submitted', 'DB verify', '0000000000', 0, 'VND')
+        RETURNING id
+      `,
+      [orderCode, cartId],
+    );
+    const orderId = orderResult.rows[0]?.id;
+    assertRuntime(Boolean(orderId), "failed to create rollback-only order fixture");
+
+    const transitionSql = `
+      SELECT *
+      FROM japan_underwear.transition_order_status(
+        $1::text,
+        $2::text,
+        $3::text,
+        $4::text,
+        $5::text,
+        $6::text
+      )
+    `;
+
+    const firstResult = await client.query(transitionSql, [
+      orderCode,
+      "confirmed",
+      "db_verify",
+      "verify-order-status-lifecycle",
+      null,
+      idempotencyKey,
+    ]);
+    const first = firstResult.rows[0];
+    assertRuntime(first?.changed === true, "first transition must change the order");
+    assertRuntime(first?.idempotent === false, "first transition must not be a replay");
+    assertRuntime(first?.current_status === "confirmed", "first transition must confirm the order");
+    assertRuntime(Boolean(first?.event_id), "first transition must return an audit event");
+
+    const replayResult = await client.query(transitionSql, [
+      orderCode,
+      "confirmed",
+      "db_verify",
+      "verify-order-status-lifecycle",
+      null,
+      idempotencyKey,
+    ]);
+    const replay = replayResult.rows[0];
+    assertRuntime(replay?.changed === false, "idempotency replay must not change the order");
+    assertRuntime(replay?.idempotent === true, "idempotency replay must be marked idempotent");
+    assertRuntime(replay?.event_id === first.event_id, "idempotency replay must return the original event");
+
+    const replayEventResult = await client.query(
+      `
+        SELECT count(*)::integer AS event_count
+        FROM japan_underwear.order_status_events
+        WHERE order_id = $1
+          AND idempotency_key = $2
+          AND from_status = 'submitted'
+          AND to_status = 'confirmed'
+      `,
+      [orderId, idempotencyKey],
+    );
+    assertRuntime(
+      Number(replayEventResult.rows[0]?.event_count ?? 0) === 1,
+      "idempotency replay must leave exactly one transition event",
+    );
+
+    await client.query("SAVEPOINT terminal_guard_check");
+    let terminalError;
+    try {
+      await client.query(transitionSql, [
+        orderCode,
+        "cancelled",
+        "db_verify",
+        "verify-order-status-lifecycle",
+        "Terminal guard verification",
+        terminalKey,
+      ]);
+    } catch (error) {
+      terminalError = error;
+      await client.query("ROLLBACK TO SAVEPOINT terminal_guard_check");
+    }
+    await client.query("RELEASE SAVEPOINT terminal_guard_check");
+
+    assertRuntime(Boolean(terminalError), "confirmed -> cancelled must be rejected");
+    assertRuntime(terminalError?.code === "23514", "terminal transition must use SQLSTATE 23514");
+
+    const terminalStateResult = await client.query(
+      `
+        SELECT
+          orders.status,
+          count(events.id)::integer AS cancelled_event_count
+        FROM japan_underwear.orders AS orders
+        LEFT JOIN japan_underwear.order_status_events AS events
+          ON events.order_id = orders.id
+         AND events.to_status = 'cancelled'
+        WHERE orders.id = $1
+        GROUP BY orders.status
+      `,
+      [orderId],
+    );
+    const terminalState = terminalStateResult.rows[0];
+    assertRuntime(terminalState?.status === "confirmed", "terminal rejection must preserve confirmed status");
+    assertRuntime(
+      Number(terminalState?.cancelled_event_count ?? 0) === 0,
+      "terminal rejection must not create a cancelled event",
+    );
+
+    return { orderCode, eventId: first.event_id };
+  } finally {
+    if (transactionOpen) {
+      await client.query("ROLLBACK");
+    }
+  }
+}
 
 async function main() {
   await client.connect();
@@ -171,13 +320,17 @@ async function main() {
       throw new Error("Invalid order status transition event found.");
     }
 
+    await verifyRuntimeGuards();
+
     console.log("Order status lifecycle verification OK.");
     console.log("Allowed transitions: submitted -> confirmed | cancelled.");
     console.log("Terminal statuses: confirmed, cancelled.");
     console.log("Cancellation reason: required by DB trigger and audit constraint.");
+    console.log("Runtime idempotency: replay returns the original event without duplication.");
+    console.log("Runtime terminal guard: confirmed -> cancelled is rejected without side effects.");
+    console.log("Runtime fixtures: executed inside a transaction and rolled back.");
     console.log(`Audit coverage: ${orderCount} order(s), 0 missing history.`);
     console.log(`Migration record: ${MIGRATION_CREATED_AT}.`);
-    console.log("Admin UI/API: intentionally not implemented before STOP GATE #2.");
   } finally {
     await client.end();
   }
