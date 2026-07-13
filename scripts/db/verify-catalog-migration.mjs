@@ -15,6 +15,7 @@ const EXPECTED_TABLES = [
   "catalog_import_runs",
   "categories",
   "order_items",
+  "order_status_events",
   "orders",
   "product_colors",
   "product_images",
@@ -28,6 +29,7 @@ const EXPECTED_MIGRATIONS = [
   1783849000000,
   1783853000000,
   1783860000000,
+  1783865000000,
 ];
 const connectionString = process.env.DATABASE_URL?.trim();
 
@@ -274,6 +276,7 @@ async function main() {
     console.log("Variant identity: product + size + cup; color selected separately per order line.");
     console.log("Server cart identity: cart + product_variant_id + color_id.");
     console.log("Order item identity: order + product_variant_id + color_id; quantity stored on the row.");
+    console.log("Order lifecycle audit table: japan_underwear.order_status_events.");
     console.log(
       `Migration records: ${appliedMigrations.length} (${EXPECTED_MIGRATIONS.length} required records present).`,
     );
