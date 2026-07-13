@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
 import type { CatalogProduct } from "@/lib/catalog-types";
-import type { CreatedOrder, ServerCart } from "@/lib/order-types";
+import type {
+  CheckoutLocationInput,
+  CreatedOrder,
+  ServerCart,
+} from "@/lib/order-types";
 
 type SelectionRow = {
   id: string;
@@ -19,6 +23,8 @@ type CheckoutForm = {
   deliveryAddress: string;
   note: string;
 };
+
+type LocationState = "idle" | "loading" | "ready" | "error";
 
 const EMPTY_CART: ServerCart = {
   items: [],
@@ -54,6 +60,19 @@ function blockerMessage(product: CatalogProduct) {
   return "Model chưa đủ dữ liệu đặt hàng.";
 }
 
+function geolocationErrorMessage(error: GeolocationPositionError) {
+  if (error.code === error.PERMISSION_DENIED) {
+    return "Bạn đã từ chối quyền vị trí. Đơn vẫn có thể tạo mà không cần định vị.";
+  }
+  if (error.code === error.POSITION_UNAVAILABLE) {
+    return "Thiết bị chưa xác định được vị trí. Hãy bật GPS hoặc thử lại ngoài trời.";
+  }
+  if (error.code === error.TIMEOUT) {
+    return "Lấy vị trí quá lâu. Vui lòng thử lại.";
+  }
+  return "Không lấy được vị trí hiện tại.";
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   const body = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) {
@@ -78,6 +97,9 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState("");
   const [createdOrder, setCreatedOrder] = useState<CreatedOrder | null>(null);
+  const [checkoutLocation, setCheckoutLocation] = useState<CheckoutLocationInput | null>(null);
+  const [locationState, setLocationState] = useState<LocationState>("idle");
+  const [locationMessage, setLocationMessage] = useState("");
   const [checkout, setCheckout] = useState<CheckoutForm>({
     customerName: "",
     customerPhone: "",
@@ -230,6 +252,56 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
     }
   }
 
+  function requestCheckoutLocation() {
+    setCheckoutError("");
+    setLocationMessage("");
+
+    if (typeof window === "undefined" || !window.isSecureContext) {
+      setLocationState("error");
+      setLocationMessage("Trình duyệt chỉ cho lấy vị trí trên HTTPS hoặc localhost.");
+      return;
+    }
+    if (!("geolocation" in navigator)) {
+      setLocationState("error");
+      setLocationMessage("Thiết bị hoặc trình duyệt này không hỗ trợ định vị.");
+      return;
+    }
+
+    setLocationState("loading");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const accuracyMeters = Math.max(position.coords.accuracy, 0.01);
+        setCheckoutLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracyMeters,
+          collectedAt: new Date(position.timestamp || Date.now()).toISOString(),
+          source: "browser_geolocation",
+        });
+        setLocationState("ready");
+        setLocationMessage(
+          `Đã lấy vị trí, độ chính xác khoảng ${Math.round(accuracyMeters)} m.`,
+        );
+      },
+      (locationError) => {
+        setCheckoutLocation(null);
+        setLocationState("error");
+        setLocationMessage(geolocationErrorMessage(locationError));
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15_000,
+        maximumAge: 0,
+      },
+    );
+  }
+
+  function clearCheckoutLocation() {
+    setCheckoutLocation(null);
+    setLocationState("idle");
+    setLocationMessage("Đã bỏ vị trí khỏi đơn hàng.");
+  }
+
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (cart.items.length === 0 || cartBusy) return;
@@ -239,12 +311,18 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(checkout),
+        body: JSON.stringify({
+          ...checkout,
+          location: checkoutLocation,
+        }),
       });
       const body = await readJson<{ order: CreatedOrder }>(response);
       setCreatedOrder(body.order);
       setCart(EMPTY_CART);
       setCheckout({ customerName: "", customerPhone: "", deliveryAddress: "", note: "" });
+      setCheckoutLocation(null);
+      setLocationState("idle");
+      setLocationMessage("");
     } catch (orderError) {
       setCheckoutError(orderError instanceof Error ? orderError.message : "Không tạo được đơn hàng.");
     } finally {
@@ -424,6 +502,11 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
                   <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-700">Đã tạo đơn</p>
                   <p className="mt-2 text-2xl font-black">{createdOrder.orderCode}</p>
                   <p className="mt-2 text-sm leading-6">Đơn đã được lưu tại server với {createdOrder.itemCount} sản phẩm, tổng {formatVnd(createdOrder.subtotal)}.</p>
+                  <p className="mt-2 text-sm font-semibold">
+                    {createdOrder.locationCaptured
+                      ? "Vị trí giao hàng đã được lưu cùng đơn."
+                      : "Đơn được tạo không kèm vị trí giao hàng."}
+                  </p>
                 </div>
               ) : cart.items.length === 0 ? (
                 <div className="grid h-56 place-items-center text-sm font-bold text-slate-400">Giỏ đang trống</div>
@@ -451,6 +534,49 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
                     <input required minLength={2} maxLength={120} value={checkout.customerName} onChange={(event) => setCheckout((current) => ({ ...current, customerName: event.target.value }))} placeholder="Tên khách hàng" className="h-11 rounded-xl border border-slate-200 px-3" />
                     <input required minLength={8} maxLength={24} value={checkout.customerPhone} onChange={(event) => setCheckout((current) => ({ ...current, customerPhone: event.target.value }))} placeholder="Số điện thoại" className="h-11 rounded-xl border border-slate-200 px-3" />
                     <textarea maxLength={500} value={checkout.deliveryAddress} onChange={(event) => setCheckout((current) => ({ ...current, deliveryAddress: event.target.value }))} placeholder="Địa chỉ giao hàng (có thể bổ sung sau)" className="min-h-20 rounded-xl border border-slate-200 p-3" />
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-black">Vị trí giao hàng (tùy chọn)</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Chỉ xin quyền sau khi bạn bấm nút. Không chia sẻ vị trí vẫn tạo đơn bình thường. Cần HTTPS hoặc localhost.
+                          </p>
+                        </div>
+                        {checkoutLocation && (
+                          <button
+                            type="button"
+                            onClick={clearCheckoutLocation}
+                            className="shrink-0 text-xs font-black text-red-600"
+                          >
+                            Xóa vị trí
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={requestCheckoutLocation}
+                        disabled={locationState === "loading" || cartBusy}
+                        className="mt-3 w-full rounded-lg border border-tt-purple-300 bg-white px-3 py-2.5 text-sm font-black text-tt-purple-700 disabled:opacity-50"
+                      >
+                        {locationState === "loading"
+                          ? "Đang lấy vị trí..."
+                          : checkoutLocation
+                            ? "Lấy lại vị trí hiện tại"
+                            : "Lấy vị trí hiện tại"}
+                      </button>
+                      {locationMessage && (
+                        <p className={`mt-2 text-xs font-semibold ${locationState === "error" ? "text-red-600" : "text-slate-600"}`}>
+                          {locationMessage}
+                        </p>
+                      )}
+                      {checkoutLocation && (
+                        <p className="mt-2 break-all text-[11px] text-slate-500">
+                          {checkoutLocation.latitude.toFixed(6)}, {checkoutLocation.longitude.toFixed(6)}
+                        </p>
+                      )}
+                    </div>
+
                     <textarea maxLength={1000} value={checkout.note} onChange={(event) => setCheckout((current) => ({ ...current, note: event.target.value }))} placeholder="Ghi chú" className="min-h-20 rounded-xl border border-slate-200 p-3" />
                   </div>
                   {checkoutError && <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{checkoutError}</p>}
