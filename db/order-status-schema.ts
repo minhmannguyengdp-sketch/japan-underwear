@@ -48,19 +48,19 @@ export const orderStatusEvents = catalogSchema.table(
     ),
     check(
       "order_status_events_actor_source_nonempty_chk",
-      sql`btrim(${table.actorSource}) <> ''`,
+      sql`char_length(btrim(${table.actorSource})) between 1 and 80`,
     ),
     check(
       "order_status_events_actor_label_nonempty_chk",
-      sql`btrim(${table.actorLabel}) <> ''`,
+      sql`char_length(btrim(${table.actorLabel})) between 1 and 120`,
     ),
     check(
       "order_status_events_reason_nonempty_chk",
-      sql`${table.reason} is null or btrim(${table.reason}) <> ''`,
+      sql`${table.reason} is null or char_length(btrim(${table.reason})) between 1 and 1000`,
     ),
     check(
       "order_status_events_idempotency_nonempty_chk",
-      sql`${table.idempotencyKey} is null or btrim(${table.idempotencyKey}) <> ''`,
+      sql`${table.idempotencyKey} is null or char_length(btrim(${table.idempotencyKey})) between 1 and 160`,
     ),
   ],
 );
