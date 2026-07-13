@@ -25,18 +25,34 @@ function getResolvedAdapter() {
   return resolvedAdapter;
 }
 
-const lazyAdapter = new Proxy({} as Adapter, {
-  get(_target, property) {
-    return (...args: unknown[]) => {
-      const adapter = getResolvedAdapter();
-      const method = Reflect.get(adapter, property);
-      if (typeof method !== "function") {
-        return method;
-      }
-      return Reflect.apply(method, adapter, args);
-    };
-  },
-});
+function delegateAdapterMethod<K extends keyof Adapter>(
+  methodName: K,
+): NonNullable<Adapter[K]> {
+  return ((...args: unknown[]) => {
+    const adapter = getResolvedAdapter();
+    const method = adapter[methodName];
+    if (typeof method !== "function") {
+      throw new Error(`Auth adapter method is unavailable: ${String(methodName)}.`);
+    }
+    return Reflect.apply(method, adapter, args);
+  }) as NonNullable<Adapter[K]>;
+}
+
+// Auth.js validates required adapter methods by enumerating the adapter object.
+// Keep these methods explicit while resolving the real Drizzle adapter lazily,
+// so Next.js builds do not require a live database connection.
+const lazyAdapter: Adapter = {
+  createUser: delegateAdapterMethod("createUser"),
+  getUser: delegateAdapterMethod("getUser"),
+  getUserByEmail: delegateAdapterMethod("getUserByEmail"),
+  getUserByAccount: delegateAdapterMethod("getUserByAccount"),
+  updateUser: delegateAdapterMethod("updateUser"),
+  linkAccount: delegateAdapterMethod("linkAccount"),
+  createSession: delegateAdapterMethod("createSession"),
+  getSessionAndUser: delegateAdapterMethod("getSessionAndUser"),
+  updateSession: delegateAdapterMethod("updateSession"),
+  deleteSession: delegateAdapterMethod("deleteSession"),
+};
 
 async function loadUserAuthorization(userId: string) {
   const result = await getPool().query(
