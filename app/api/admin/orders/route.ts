@@ -14,14 +14,16 @@ export async function GET(request: NextRequest) {
     await requireRole(STAFF_ROLES);
 
     const rawStatus = request.nextUrl.searchParams.get("status");
-    if (rawStatus && !isStaffOrderStatus(rawStatus)) {
+    const status =
+      rawStatus && isStaffOrderStatus(rawStatus) ? rawStatus : null;
+    if (rawStatus && status === null) {
       return NextResponse.json(
         { error: "Bộ lọc trạng thái không hợp lệ.", code: "invalid_status_filter" },
         { status: 400 },
       );
     }
 
-    const orders = await listStaffOrders(rawStatus || null);
+    const orders = await listStaffOrders(status);
     return NextResponse.json({ orders });
   } catch (error) {
     return staffApiErrorResponse(error);
