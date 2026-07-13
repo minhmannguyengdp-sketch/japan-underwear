@@ -3,6 +3,9 @@ name: Generate portable lockfile
 on:
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   generate:
     strategy:
@@ -35,6 +38,12 @@ jobs:
     needs: generate
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout pull request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
       - name: Download lockfiles
         uses: actions/download-artifact@v4
         with:
@@ -59,8 +68,7 @@ jobs:
           }
 
           const packages = { ...linux.packages, ...windows.packages };
-          const orderedPackages = {};
-          orderedPackages[''] = packages[''];
+          const orderedPackages = { '': packages[''] };
 
           for (const key of Object.keys(packages).filter(Boolean).sort()) {
             orderedPackages[key] = packages[key];
@@ -91,9 +99,12 @@ jobs:
           fs.writeFileSync('package-lock.json', `${JSON.stringify(portable, null, 2)}\n`);
           NODE
 
-      - name: Upload portable lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: portable-package-lock
-          path: package-lock.json
-          if-no-files-found: error
+      - name: Commit portable lockfile
+        shell: bash
+        run: |
+          rm .github/workflows/generate-portable-lockfile.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json .github/workflows/generate-portable-lockfile.yml
+          git commit -m "chore: make lockfile portable across platforms"
+          git push origin HEAD:${{ github.head_ref }}
