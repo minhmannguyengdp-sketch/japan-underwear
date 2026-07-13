@@ -13,6 +13,14 @@ const REQUIRED_INDEXES = [
   "order_status_events_order_created_idx",
   "order_status_events_order_idempotency_uidx",
 ];
+const REQUIRED_CONSTRAINTS = [
+  "order_status_events_status_chk",
+  "order_status_events_actor_source_nonempty_chk",
+  "order_status_events_actor_label_nonempty_chk",
+  "order_status_events_reason_nonempty_chk",
+  "order_status_events_cancel_reason_chk",
+  "order_status_events_idempotency_nonempty_chk",
+];
 const REQUIRED_TRIGGERS = [
   "orders_status_transition_guard_trg",
   "orders_status_audit_trg",
@@ -67,6 +75,30 @@ async function main() {
     const missingIndexes = REQUIRED_INDEXES.filter((name) => !indexes.has(name));
     if (missingIndexes.length > 0) {
       throw new Error(`Missing order status indexes: ${missingIndexes.join(", ")}.`);
+    }
+
+    const constraintResult = await client.query(
+      `
+        SELECT constraint_definition.conname AS constraint_name
+        FROM pg_constraint AS constraint_definition
+        JOIN pg_class AS table_definition
+          ON table_definition.oid = constraint_definition.conrelid
+        JOIN pg_namespace AS namespace
+          ON namespace.oid = table_definition.relnamespace
+        WHERE namespace.nspname = 'japan_underwear'
+          AND table_definition.relname = 'order_status_events'
+          AND constraint_definition.conname = ANY($1::text[])
+      `,
+      [REQUIRED_CONSTRAINTS],
+    );
+    const constraints = new Set(
+      constraintResult.rows.map((row) => String(row.constraint_name)),
+    );
+    const missingConstraints = REQUIRED_CONSTRAINTS.filter(
+      (name) => !constraints.has(name),
+    );
+    if (missingConstraints.length > 0) {
+      throw new Error(`Missing order status constraints: ${missingConstraints.join(", ")}.`);
     }
 
     const triggerResult = await client.query(
@@ -133,6 +165,7 @@ async function main() {
         (from_status IS NULL AND to_status IN ('submitted', 'confirmed', 'cancelled'))
         OR (from_status = 'submitted' AND to_status IN ('confirmed', 'cancelled'))
       )
+      OR (to_status = 'cancelled' AND reason IS NULL)
     `);
     if (Number(invalidEventResult.rows[0]?.invalid_count ?? 0) !== 0) {
       throw new Error("Invalid order status transition event found.");
@@ -141,6 +174,7 @@ async function main() {
     console.log("Order status lifecycle verification OK.");
     console.log("Allowed transitions: submitted -> confirmed | cancelled.");
     console.log("Terminal statuses: confirmed, cancelled.");
+    console.log("Cancellation reason: required by DB trigger and audit constraint.");
     console.log(`Audit coverage: ${orderCount} order(s), 0 missing history.`);
     console.log(`Migration record: ${MIGRATION_CREATED_AT}.`);
     console.log("Admin UI/API: intentionally not implemented before STOP GATE #2.");
