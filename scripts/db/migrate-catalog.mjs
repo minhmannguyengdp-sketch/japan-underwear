@@ -121,6 +121,11 @@ run(
   [path.resolve(cwd, "scripts", "db", "apply-server-cart-orders.mjs")],
   "Server cart and orders migration",
 );
+run(
+  process.execPath,
+  [path.resolve(cwd, "scripts", "db", "apply-order-status-lifecycle.mjs")],
+  "Order status lifecycle migration",
+);
 
 let pending = await readPendingMigrations();
 if (pending.length === 0) {
