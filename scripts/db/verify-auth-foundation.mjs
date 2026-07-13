@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
@@ -42,6 +43,115 @@ const client = new Client({
   connectionString,
   ssl: isLocalDatabase(connectionString) ? undefined : { rejectUnauthorized: false },
 });
+
+async function verifyRuntimeGuards() {
+  const email = `AUTH-VERIFY-${randomUUID()}@EXAMPLE.INVALID`;
+  const sessionToken = `verify-${randomUUID()}`;
+
+  await client.query("BEGIN");
+  try {
+    const userResult = await client.query(
+      `
+        INSERT INTO japan_underwear.users (email, name)
+        VALUES ($1, 'Auth verifier')
+        RETURNING id, email, status
+      `,
+      [email],
+    );
+    const user = userResult.rows[0];
+    if (user.email !== email.toLowerCase()) {
+      throw new Error("Auth user email normalization trigger failed.");
+    }
+    if (user.status !== "active") {
+      throw new Error("New auth user must start active.");
+    }
+
+    const customerRoleResult = await client.query(
+      `
+        SELECT count(*)::integer AS count
+        FROM japan_underwear.user_roles
+        WHERE user_id = $1::uuid
+          AND role = 'customer'
+      `,
+      [user.id],
+    );
+    if (Number(customerRoleResult.rows[0]?.count ?? 0) !== 1) {
+      throw new Error("New auth user did not receive exactly one customer role.");
+    }
+
+    const onboardingAuditResult = await client.query(
+      `
+        SELECT actor, action, details->>'role' AS role
+        FROM japan_underwear.auth_audit_events
+        WHERE target_user_id = $1::uuid
+          AND action = 'role.granted'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+      [user.id],
+    );
+    const onboardingAudit = onboardingAuditResult.rows[0];
+    if (
+      onboardingAuditResult.rowCount !== 1 ||
+      onboardingAudit.actor !== "system:onboarding" ||
+      onboardingAudit.role !== "customer"
+    ) {
+      throw new Error("Default customer role audit event is missing or incorrect.");
+    }
+
+    await client.query(
+      `
+        INSERT INTO japan_underwear.auth_sessions (session_token, user_id, expires)
+        VALUES ($1, $2::uuid, now() + interval '1 day')
+      `,
+      [sessionToken, user.id],
+    );
+    await client.query("SELECT set_config('app.auth_actor', 'verify:auth-foundation', true)");
+    await client.query(
+      `UPDATE japan_underwear.users SET status = 'blocked' WHERE id = $1::uuid`,
+      [user.id],
+    );
+
+    const sessionResult = await client.query(
+      `SELECT count(*)::integer AS count FROM japan_underwear.auth_sessions WHERE user_id = $1::uuid`,
+      [user.id],
+    );
+    if (Number(sessionResult.rows[0]?.count ?? 0) !== 0) {
+      throw new Error("Blocking a user did not revoke database sessions.");
+    }
+
+    const blockAuditResult = await client.query(
+      `
+        SELECT actor,
+               action,
+               details->>'from' AS from_status,
+               details->>'to' AS to_status,
+               (details->>'revoked_sessions')::integer AS revoked_sessions
+        FROM japan_underwear.auth_audit_events
+        WHERE target_user_id = $1::uuid
+          AND action = 'user.blocked'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+      [user.id],
+    );
+    const blockAudit = blockAuditResult.rows[0];
+    if (
+      blockAuditResult.rowCount !== 1 ||
+      blockAudit.actor !== "verify:auth-foundation" ||
+      blockAudit.from_status !== "active" ||
+      blockAudit.to_status !== "blocked" ||
+      Number(blockAudit.revoked_sessions) !== 1
+    ) {
+      throw new Error("Block-user audit or revoked-session count is incorrect.");
+    }
+
+    await client.query("ROLLBACK");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  }
+}
 
 async function main() {
   await client.connect();
@@ -118,6 +228,8 @@ async function main() {
       throw new Error(`Migration record ${MIGRATION_CREATED_AT} must exist exactly once.`);
     }
 
+    await verifyRuntimeGuards();
+
     const countsResult = await client.query(`
       SELECT
         (SELECT count(*)::integer FROM japan_underwear.users) AS users,
@@ -132,7 +244,7 @@ async function main() {
     console.log("Identity: internal UUID; provider identity stored in auth_accounts.");
     console.log("Session: PostgreSQL database sessions.");
     console.log("Roles: customer | sales | admin; server authorization required.");
-    console.log("Blocked user: database trigger revokes sessions.");
+    console.log("Runtime guards: default customer role + block revokes session + audit (transactional probe OK).");
     console.log(
       `Auth records: ${counts.users} user(s), ${counts.sessions} session(s), ${counts.roles} role row(s), ${counts.audit_events} audit event(s).`,
     );
