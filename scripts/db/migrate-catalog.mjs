@@ -109,11 +109,17 @@ async function readPendingMigrations() {
   }
 }
 
-// Reconcile the real order-variant schema before evaluating repository migrations.
+// Reconcile migrations with state-aware, transactional runners before asking
+// Drizzle to evaluate any future migration that does not yet have a runner.
 run(
   process.execPath,
   [path.resolve(cwd, "scripts", "db", "apply-order-variant-identity.mjs")],
   "Order variant identity migration",
+);
+run(
+  process.execPath,
+  [path.resolve(cwd, "scripts", "db", "apply-server-cart-orders.mjs")],
+  "Server cart and orders migration",
 );
 
 let pending = await readPendingMigrations();
