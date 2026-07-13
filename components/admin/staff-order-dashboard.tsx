@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 
 import type {
   StaffOrderDetail,
@@ -434,7 +434,9 @@ export function StaffOrderDashboard({
                   <textarea
                     value={cancelReason}
                     disabled={isSubmitting}
-                    onChange={(event) => setCancelReason(event.target.value)}
+                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                      setCancelReason(event.target.value)
+                    }
                     maxLength={1000}
                     rows={3}
                     placeholder="Bắt buộc khi hủy đơn"
