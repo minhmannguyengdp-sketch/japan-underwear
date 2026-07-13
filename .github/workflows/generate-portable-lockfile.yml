@@ -1,0 +1,99 @@
+name: Generate portable lockfile
+
+on:
+  pull_request:
+
+jobs:
+  generate:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Generate clean lockfile
+        shell: bash
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install --package-lock-only --ignore-scripts --include=optional
+
+      - name: Upload platform lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: lock-${{ matrix.os }}
+          path: package-lock.json
+          if-no-files-found: error
+
+  merge:
+    needs: generate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download lockfiles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lock-*
+          path: locks
+
+      - name: Merge platform package entries
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const linux = JSON.parse(
+            fs.readFileSync('locks/lock-ubuntu-latest/package-lock.json', 'utf8'),
+          );
+          const windows = JSON.parse(
+            fs.readFileSync('locks/lock-windows-latest/package-lock.json', 'utf8'),
+          );
+
+          if (linux.lockfileVersion !== 3 || windows.lockfileVersion !== 3) {
+            throw new Error('Expected npm lockfileVersion 3.');
+          }
+
+          const packages = { ...linux.packages, ...windows.packages };
+          const orderedPackages = {};
+          orderedPackages[''] = packages[''];
+
+          for (const key of Object.keys(packages).filter(Boolean).sort()) {
+            orderedPackages[key] = packages[key];
+          }
+
+          const portable = {
+            ...linux,
+            packages: orderedPackages,
+          };
+
+          const required = [
+            'node_modules/@next/swc-linux-x64-gnu',
+            'node_modules/@next/swc-win32-x64-msvc',
+            'node_modules/@tailwindcss/oxide-linux-x64-gnu',
+            'node_modules/@tailwindcss/oxide-win32-x64-msvc',
+            'node_modules/@img/sharp-linux-x64',
+            'node_modules/@img/sharp-win32-x64',
+            'node_modules/lightningcss-linux-x64-gnu',
+            'node_modules/lightningcss-win32-x64-msvc',
+          ];
+
+          for (const key of required) {
+            if (!portable.packages[key]) {
+              throw new Error(`Missing portable optional dependency: ${key}`);
+            }
+          }
+
+          fs.writeFileSync('package-lock.json', `${JSON.stringify(portable, null, 2)}\n`);
+          NODE
+
+      - name: Upload portable lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-package-lock
+          path: package-lock.json
+          if-no-files-found: error
