@@ -36,7 +36,8 @@
     "db:repair-customer-orders": "node scripts/db/apply-customer-order-ownership.mjs",
     "db:repair-phase6": "node scripts/db/apply-phase6-checkout-onboarding.mjs",
     "db:repair-manual-orders": "node scripts/db/apply-manual-order-shared-service.mjs",
-    "db:verify": "node scripts/db/verify-catalog-migration.mjs && node scripts/db/verify-order-status-lifecycle.mjs && node scripts/db/verify-checkout-geolocation.mjs && node scripts/db/verify-auth-foundation.mjs && node scripts/db/verify-customer-order-ownership.mjs && node scripts/db/verify-phase6-checkout-onboarding.mjs && node scripts/db/verify-admin-customer-management.mjs && node scripts/db/verify-manual-order-shared-service.mjs",
+    "db:repair-catalog-prices": "node scripts/db/apply-catalog-price-management.mjs",
+    "db:verify": "node scripts/db/verify-catalog-migration.mjs && node scripts/db/verify-order-status-lifecycle.mjs && node scripts/db/verify-checkout-geolocation.mjs && node scripts/db/verify-auth-foundation.mjs && node scripts/db/verify-customer-order-ownership.mjs && node scripts/db/verify-phase6-checkout-onboarding.mjs && node scripts/db/verify-admin-customer-management.mjs && node scripts/db/verify-manual-order-shared-service.mjs && node scripts/db/verify-catalog-price-management.mjs",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
