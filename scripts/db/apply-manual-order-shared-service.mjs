@@ -42,6 +42,11 @@ const REQUIRED_INDEXES = [
   "orders_staff_manual_request_uidx",
   "orders_source_created_idx",
 ];
+const REQUIRED_FUNCTIONS = [
+  "japan_underwear.derive_order_creation_source()",
+  "japan_underwear.protect_order_customer_owner()",
+  "japan_underwear.record_order_status_event()",
+];
 
 const connectionString = process.env.DATABASE_URL?.trim();
 if (!connectionString) {
@@ -107,7 +112,9 @@ async function assertRequiredState() {
     [REQUIRED_MIGRATIONS],
   );
   const applied = new Set(migrationResult.rows.map((row) => Number(row.created_at)));
-  const missingMigrations = REQUIRED_MIGRATIONS.filter((createdAt) => !applied.has(createdAt));
+  const missingMigrations = REQUIRED_MIGRATIONS.filter(
+    (createdAt) => !applied.has(createdAt),
+  );
   if (missingMigrations.length > 0) {
     throw new Error(`Thiếu migration nền trước 0011: ${missingMigrations.join(", ")}.`);
   }
@@ -134,7 +141,7 @@ async function applyMigrationStatements(migrationSql) {
 async function verifyAppliedState() {
   const columnResult = await client.query(
     `
-      SELECT column_name, is_nullable
+      SELECT column_name, is_nullable, column_default
       FROM information_schema.columns
       WHERE table_schema = 'japan_underwear'
         AND table_name = 'orders'
@@ -143,10 +150,21 @@ async function verifyAppliedState() {
     `,
     [REQUIRED_COLUMNS],
   );
-  const columns = new Set(columnResult.rows.map((row) => String(row.column_name)));
+  const columns = new Map(
+    columnResult.rows.map((row) => [
+      String(row.column_name),
+      { nullable: String(row.is_nullable), defaultValue: row.column_default },
+    ]),
+  );
   const missingColumns = REQUIRED_COLUMNS.filter((name) => !columns.has(name));
   if (missingColumns.length > 0) {
     throw new Error(`Hậu kiểm 0011 thiếu column: ${missingColumns.join(", ")}.`);
+  }
+  if (
+    columns.get("order_source")?.nullable !== "NO" ||
+    columns.get("order_source")?.defaultValue != null
+  ) {
+    throw new Error("Hậu kiểm 0011 yêu cầu order_source NOT NULL và không có default tĩnh.");
   }
 
   const sourceCartResult = await client.query(`
@@ -177,7 +195,9 @@ async function verifyAppliedState() {
   const constraints = new Set(
     constraintResult.rows.map((row) => String(row.constraint_name)),
   );
-  const missingConstraints = REQUIRED_CONSTRAINTS.filter((name) => !constraints.has(name));
+  const missingConstraints = REQUIRED_CONSTRAINTS.filter(
+    (name) => !constraints.has(name),
+  );
   if (missingConstraints.length > 0) {
     throw new Error(`Hậu kiểm 0011 thiếu constraint: ${missingConstraints.join(", ")}.`);
   }
@@ -196,6 +216,17 @@ async function verifyAppliedState() {
   const missingIndexes = REQUIRED_INDEXES.filter((name) => !indexes.has(name));
   if (missingIndexes.length > 0) {
     throw new Error(`Hậu kiểm 0011 thiếu index: ${missingIndexes.join(", ")}.`);
+  }
+
+  const triggerResult = await client.query(`
+    SELECT trigger_name
+    FROM information_schema.triggers
+    WHERE trigger_schema = 'japan_underwear'
+      AND event_object_table = 'orders'
+      AND trigger_name = 'orders_creation_source_derive_trg'
+  `);
+  if (triggerResult.rowCount !== 1) {
+    throw new Error("Hậu kiểm 0011 thiếu orders_creation_source_derive_trg.");
   }
 
   const invalidResult = await client.query(`
@@ -225,10 +256,7 @@ async function verifyAppliedState() {
     throw new Error("Hậu kiểm 0011 phát hiện order creation identity không hợp lệ.");
   }
 
-  for (const signature of [
-    "japan_underwear.protect_order_customer_owner()",
-    "japan_underwear.record_order_status_event()",
-  ]) {
+  for (const signature of REQUIRED_FUNCTIONS) {
     const functionResult = await client.query(
       "SELECT to_regprocedure($1) AS function_name",
       [signature],
@@ -270,7 +298,7 @@ async function main() {
     console.log("  - Mở rộng order creation identity cho checkout và staff manual...");
     await applyMigrationStatements(migrationSql);
 
-    console.log("  - Hậu kiểm column, constraint, index, function và dữ liệu hiện có...");
+    console.log("  - Hậu kiểm column, constraint, index, trigger, function và dữ liệu...");
     await verifyAppliedState();
 
     console.log("  - Reconcile Drizzle migration journal cho 0011...");
