@@ -2,13 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { signOut } from "@/auth";
-import { StaffOrderDashboard } from "@/components/admin/staff-order-dashboard";
+import { ManualOrderForm } from "@/components/admin/manual-order-form";
+import { listAdminCustomers } from "@/lib/admin-customers";
 import {
   AuthorizationError,
   requireRole,
   STAFF_ROLES,
 } from "@/lib/authz";
-import { listStaffOrders } from "@/lib/staff-orders";
+import { listCatalogProducts } from "@/lib/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ async function requireStaffPage() {
     return await requireRole(STAFF_ROLES);
   } catch (error) {
     if (error instanceof AuthorizationError && error.status === 401) {
-      redirect("/dang-nhap?callbackUrl=/admin");
+      redirect("/dang-nhap?callbackUrl=/admin/tao-don");
     }
     if (error instanceof AuthorizationError && error.status === 403) {
       return null;
@@ -26,9 +27,8 @@ async function requireStaffPage() {
   }
 }
 
-export default async function AdminPage() {
+export default async function ManualOrderPage() {
   const context = await requireStaffPage();
-
   if (!context) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#f7f5fa] px-4 text-ink-950">
@@ -36,33 +36,37 @@ export default async function AdminPage() {
           <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-700">
             403 · Không đủ quyền
           </p>
-          <h1 className="mt-2 text-3xl font-black">
-            Tài khoản không có quyền staff
-          </h1>
+          <h1 className="mt-2 text-3xl font-black">Tài khoản không có quyền staff</h1>
           <p className="mt-3 leading-7 text-slate-600">
-            Customer không được xem dữ liệu đơn nội bộ hoặc gọi API quản lý đơn.
-            Quyền sales/admin phải được cấp bằng công cụ nội bộ có audit.
+            Chỉ sales hoặc admin được tạo đơn tay. Quyền được kiểm tra lại tại API.
           </p>
-          <form
-            className="mt-5"
-            action={async () => {
-              "use server";
-              await signOut({ redirectTo: "/" });
-            }}
-          >
-            <button
-              className="rounded-xl bg-ink-950 px-5 py-3 font-black text-white"
-              type="submit"
-            >
-              Đăng xuất
-            </button>
-          </form>
         </section>
       </main>
     );
   }
 
-  const orders = await listStaffOrders(null);
+  const [customerRows, productRows] = await Promise.all([
+    listAdminCustomers(null),
+    listCatalogProducts({ limit: 200 }),
+  ]);
+  const customers = customerRows
+    .filter(
+      (customer) =>
+        customer.status === "active" &&
+        customer.profileCompleted &&
+        customer.contactName &&
+        customer.phone &&
+        customer.deliveryAddress,
+    )
+    .map((customer) => ({
+      userId: customer.userId,
+      label: [customer.storeName, customer.contactName, customer.email]
+        .filter(Boolean)
+        .join(" · "),
+      phone: customer.phone as string,
+      deliveryAddress: customer.deliveryAddress as string,
+    }));
+  const products = productRows.filter((product) => product.orderable);
 
   return (
     <main className="min-h-screen bg-[#f7f5fa] px-4 py-8 text-ink-950 sm:px-6 lg:px-8">
@@ -73,25 +77,23 @@ export default async function AdminPage() {
               <p className="text-xs font-black uppercase tracking-[0.16em] text-tt-purple-700">
                 Sales / Admin
               </p>
-              <h1 className="mt-2 text-3xl font-black tracking-tight">
-                Quản lý đơn hàng
-              </h1>
+              <h1 className="mt-2 text-3xl font-black tracking-tight">Tạo đơn tay</h1>
               <p className="mt-3 max-w-2xl leading-7 text-slate-600">
-                Xem đơn, kiểm tra snapshot và chuyển đơn theo lifecycle. Mọi thao tác
-                được kiểm tra quyền ở server và ghi audit.
+                Đơn tay và checkout khách dùng chung một service tính giá, kiểm tra catalog,
+                chụp snapshot item và ghi outbox trong cùng transaction.
               </p>
             </div>
             <div className="flex flex-col items-start gap-3 sm:items-end">
               <div className="flex flex-wrap gap-2">
                 <Link
                   href="/admin"
-                  className="rounded-xl bg-tt-purple-700 px-4 py-2.5 text-sm font-black text-white"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black hover:bg-slate-50"
                 >
                   Đơn hàng
                 </Link>
                 <Link
                   href="/admin/tao-don"
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black hover:bg-slate-50"
+                  className="rounded-xl bg-tt-purple-700 px-4 py-2.5 text-sm font-black text-white"
                 >
                   Tạo đơn tay
                 </Link>
@@ -104,9 +106,7 @@ export default async function AdminPage() {
               </div>
               <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm">
                 <p className="font-black">{context.email ?? context.userId}</p>
-                <p className="mt-1 text-slate-500">
-                  {context.roles.join(", ")}
-                </p>
+                <p className="mt-1 text-slate-500">{context.roles.join(", ")}</p>
               </div>
               <form
                 action={async () => {
@@ -125,7 +125,7 @@ export default async function AdminPage() {
           </div>
         </header>
 
-        <StaffOrderDashboard initialOrders={orders} />
+        <ManualOrderForm customers={customers} products={products} />
       </div>
     </main>
   );

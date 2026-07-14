@@ -5,15 +5,12 @@ import type { PoolClient } from "pg";
 import { getPool } from "@/db/client";
 import type {
   AddCartItemInput,
-  CheckoutInput,
-  CreatedOrder,
   ServerCart,
   ServerCartItem,
 } from "@/lib/order-types";
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const MAX_LOCATION_AGE_MS = 30 * 60 * 1000;
-const MAX_LOCATION_FUTURE_MS = 5 * 60 * 1000;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class OrderingError extends Error {
   constructor(
@@ -63,7 +60,10 @@ async function withTransaction<T>(work: (client: PoolClient) => Promise<T>) {
   }
 }
 
-async function ensureActiveCart(client: PoolClient, requestedToken: string | null): Promise<CartHandle> {
+async function ensureActiveCart(
+  client: PoolClient,
+  requestedToken: string | null,
+): Promise<CartHandle> {
   if (requestedToken) {
     const existing = await client.query(
       `
@@ -178,7 +178,11 @@ async function loadCart(client: PoolClient, cartId: string): Promise<ServerCart>
 
   const currencies = new Set(items.map((item) => item.currency));
   if (currencies.size > 1) {
-    throw new OrderingError("Giỏ hàng có nhiều loại tiền tệ và không thể thanh toán.", 409, "mixed_currency");
+    throw new OrderingError(
+      "Giỏ hàng có nhiều loại tiền tệ và không thể thanh toán.",
+      409,
+      "mixed_currency",
+    );
   }
 
   return {
@@ -217,7 +221,11 @@ async function resolveSelection(
   );
 
   if (result.rowCount !== 1) {
-    throw new OrderingError("Không tìm thấy size/cup hoặc màu đã chọn.", 404, "selection_not_found");
+    throw new OrderingError(
+      "Không tìm thấy size/cup hoặc màu đã chọn.",
+      404,
+      "selection_not_found",
+    );
   }
 
   const row = result.rows[0] as SelectionRow;
@@ -229,7 +237,11 @@ async function resolveSelection(
     );
   }
   if (!row.variant_active || !row.color_active || !row.product_active) {
-    throw new OrderingError("Sản phẩm, màu hoặc size/cup đã ngừng bán.", 409, "selection_inactive");
+    throw new OrderingError(
+      "Sản phẩm, màu hoặc size/cup đã ngừng bán.",
+      409,
+      "selection_inactive",
+    );
   }
   return row;
 }
@@ -263,7 +275,11 @@ export async function addServerCartItems(
     const handle = await ensureActiveCart(client, requestedToken);
     for (const input of consolidated.values()) {
       if (input.quantity > 999) {
-        throw new OrderingError("Số lượng mỗi dòng không được vượt quá 999.", 400, "quantity_limit");
+        throw new OrderingError(
+          "Số lượng mỗi dòng không được vượt quá 999.",
+          400,
+          "quantity_limit",
+        );
       }
       const selection = await resolveSelection(
         client,
@@ -297,7 +313,11 @@ export async function addServerCartItems(
         ],
       );
       if (upsert.rowCount !== 1) {
-        throw new OrderingError("Tổng số lượng một dòng không được vượt quá 999.", 409, "quantity_limit");
+        throw new OrderingError(
+          "Tổng số lượng một dòng không được vượt quá 999.",
+          409,
+          "quantity_limit",
+        );
       }
     }
 
@@ -321,7 +341,11 @@ export async function updateServerCartItem(
   return withTransaction(async (client) => {
     const handle = await findActiveCartForUpdate(client, requestedToken);
     if (!handle) {
-      throw new OrderingError("Không tìm thấy giỏ hàng đang hoạt động.", 404, "cart_not_found");
+      throw new OrderingError(
+        "Không tìm thấy giỏ hàng đang hoạt động.",
+        404,
+        "cart_not_found",
+      );
     }
 
     const updated = await client.query(
@@ -335,21 +359,36 @@ export async function updateServerCartItem(
       [itemId, handle.id, quantity],
     );
     if (updated.rowCount !== 1) {
-      throw new OrderingError("Không tìm thấy dòng giỏ hàng.", 404, "cart_item_not_found");
+      throw new OrderingError(
+        "Không tìm thấy dòng giỏ hàng.",
+        404,
+        "cart_item_not_found",
+      );
     }
     await client.query(
       "UPDATE japan_underwear.carts SET updated_at = now() WHERE id = $1::uuid",
       [handle.id],
     );
-    return { token: handle.token, tokenChanged: false, cart: await loadCart(client, handle.id) };
+    return {
+      token: handle.token,
+      tokenChanged: false,
+      cart: await loadCart(client, handle.id),
+    };
   });
 }
 
-export async function deleteServerCartItem(requestedToken: string | null, itemId: string) {
+export async function deleteServerCartItem(
+  requestedToken: string | null,
+  itemId: string,
+) {
   return withTransaction(async (client) => {
     const handle = await findActiveCartForUpdate(client, requestedToken);
     if (!handle) {
-      throw new OrderingError("Không tìm thấy giỏ hàng đang hoạt động.", 404, "cart_not_found");
+      throw new OrderingError(
+        "Không tìm thấy giỏ hàng đang hoạt động.",
+        404,
+        "cart_not_found",
+      );
     }
     const deleted = await client.query(
       `
@@ -361,249 +400,20 @@ export async function deleteServerCartItem(requestedToken: string | null, itemId
       [itemId, handle.id],
     );
     if (deleted.rowCount !== 1) {
-      throw new OrderingError("Không tìm thấy dòng giỏ hàng.", 404, "cart_item_not_found");
+      throw new OrderingError(
+        "Không tìm thấy dòng giỏ hàng.",
+        404,
+        "cart_item_not_found",
+      );
     }
     await client.query(
       "UPDATE japan_underwear.carts SET updated_at = now() WHERE id = $1::uuid",
       [handle.id],
     );
-    return { token: handle.token, tokenChanged: false, cart: await loadCart(client, handle.id) };
-  });
-}
-
-function makeOrderCode() {
-  const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
-  return `TT-${date}-${randomUUID().slice(0, 8).toUpperCase()}`;
-}
-
-function normalizeCheckoutLocation(location: CheckoutInput["location"]) {
-  if (!location) return null;
-
-  const collectedAt = Date.parse(location.collectedAt);
-  const now = Date.now();
-  const valid =
-    location.source === "browser_geolocation" &&
-    Number.isFinite(location.latitude) &&
-    location.latitude >= -90 &&
-    location.latitude <= 90 &&
-    Number.isFinite(location.longitude) &&
-    location.longitude >= -180 &&
-    location.longitude <= 180 &&
-    Number.isFinite(location.accuracyMeters) &&
-    location.accuracyMeters > 0 &&
-    location.accuracyMeters <= 100000 &&
-    Number.isFinite(collectedAt) &&
-    collectedAt >= now - MAX_LOCATION_AGE_MS &&
-    collectedAt <= now + MAX_LOCATION_FUTURE_MS;
-
-  if (!valid) {
-    throw new OrderingError(
-      "Vị trí giao hàng không hợp lệ hoặc đã quá cũ. Vui lòng lấy lại vị trí.",
-      400,
-      "invalid_checkout_location",
-    );
-  }
-
-  return {
-    latitude: location.latitude,
-    longitude: location.longitude,
-    accuracyMeters: location.accuracyMeters,
-    collectedAt: new Date(collectedAt).toISOString(),
-    source: location.source,
-  };
-}
-
-export async function createServerOrder(
-  requestedToken: string | null,
-  customerUserId: string,
-  input: CheckoutInput,
-): Promise<CreatedOrder> {
-  const normalizedCustomerUserId = customerUserId.trim().toLowerCase();
-  if (!UUID_PATTERN.test(normalizedCustomerUserId)) {
-    throw new OrderingError(
-      "Danh tính người dùng không hợp lệ.",
-      400,
-      "invalid_customer_user_id",
-    );
-  }
-  const location = normalizeCheckoutLocation(input.location);
-
-  return withTransaction(async (client) => {
-    const handle = await findActiveCartForUpdate(client, requestedToken);
-    if (!handle) {
-      throw new OrderingError("Giỏ hàng không tồn tại hoặc đã được tạo đơn.", 409, "cart_unavailable");
-    }
-
-    const itemResult = await client.query(
-      `
-        SELECT
-          cart_item.product_variant_id,
-          cart_item.color_id,
-          cart_item.quantity,
-          variant.product_id AS variant_product_id,
-          variant.size_code,
-          variant.cup_code,
-          variant.is_active AS variant_active,
-          color.product_id AS color_product_id,
-          color.code AS color_code,
-          color.name AS color_name,
-          color.is_active AS color_active,
-          product.model_code,
-          product.name AS product_name,
-          product.base_price,
-          product.currency,
-          product.is_active AS product_active,
-          COALESCE(variant.price_override, product.base_price) AS current_unit_price
-        FROM japan_underwear.cart_items AS cart_item
-        JOIN japan_underwear.product_variants AS variant
-          ON variant.id = cart_item.product_variant_id
-        JOIN japan_underwear.product_colors AS color
-          ON color.id = cart_item.color_id
-        JOIN japan_underwear.products AS product
-          ON product.id = variant.product_id
-        WHERE cart_item.cart_id = $1::uuid
-        ORDER BY cart_item.created_at, cart_item.id
-        FOR UPDATE OF cart_item
-      `,
-      [handle.id],
-    );
-
-    if (itemResult.rowCount === 0) {
-      throw new OrderingError("Giỏ hàng đang trống.", 409, "empty_cart");
-    }
-
-    for (const row of itemResult.rows) {
-      if (String(row.variant_product_id) !== String(row.color_product_id)) {
-        throw new OrderingError(
-          `Dòng ${row.model_code} có màu và size/cup khác sản phẩm.`,
-          409,
-          "selection_product_mismatch",
-        );
-      }
-      if (!row.variant_active || !row.color_active || !row.product_active) {
-        throw new OrderingError(
-          `Sản phẩm ${row.model_code} có lựa chọn đã ngừng bán.`,
-          409,
-          "selection_inactive",
-        );
-      }
-    }
-
-    const currencies = new Set(itemResult.rows.map((row) => String(row.currency)));
-    if (currencies.size !== 1) {
-      throw new OrderingError("Đơn hàng phải dùng đúng một loại tiền tệ.", 409, "mixed_currency");
-    }
-    const currency = String(itemResult.rows[0].currency);
-    const subtotal = itemResult.rows.reduce(
-      (sum, row) => sum + Number(row.current_unit_price) * Number(row.quantity),
-      0,
-    );
-    const orderCode = makeOrderCode();
-
-    const orderResult = await client.query(
-      `
-        INSERT INTO japan_underwear.orders (
-          order_code,
-          source_cart_id,
-          status,
-          customer_name,
-          customer_phone,
-          delivery_address,
-          note,
-          delivery_latitude,
-          delivery_longitude,
-          delivery_accuracy_meters,
-          location_collected_at,
-          location_source,
-          subtotal,
-          currency,
-          customer_user_id
-        )
-        VALUES (
-          $1, $2::uuid, 'submitted', $3, $4, $5, $6,
-          $7, $8, $9, $10::timestamptz, $11, $12, $13, $14::uuid
-        )
-        RETURNING id, created_at
-      `,
-      [
-        orderCode,
-        handle.id,
-        input.customerName.trim(),
-        input.customerPhone.trim(),
-        input.deliveryAddress?.trim() || null,
-        input.note?.trim() || null,
-        location?.latitude ?? null,
-        location?.longitude ?? null,
-        location?.accuracyMeters ?? null,
-        location?.collectedAt ?? null,
-        location?.source ?? null,
-        subtotal,
-        currency,
-        normalizedCustomerUserId,
-      ],
-    );
-    const orderId = String(orderResult.rows[0].id);
-
-    for (const row of itemResult.rows) {
-      const quantity = Number(row.quantity);
-      const unitPrice = Number(row.current_unit_price);
-      await client.query(
-        `
-          INSERT INTO japan_underwear.order_items (
-            order_id,
-            product_variant_id,
-            color_id,
-            quantity,
-            unit_price,
-            line_total,
-            product_code_snapshot,
-            product_name_snapshot,
-            color_code_snapshot,
-            color_name_snapshot,
-            size_code_snapshot,
-            cup_code_snapshot
-          )
-          VALUES (
-            $1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
-            $7, $8, $9, $10, $11, $12
-          )
-        `,
-        [
-          orderId,
-          row.product_variant_id,
-          row.color_id,
-          quantity,
-          unitPrice,
-          unitPrice * quantity,
-          String(row.model_code),
-          String(row.product_name),
-          String(row.color_code),
-          String(row.color_name),
-          String(row.size_code),
-          row.cup_code ? String(row.cup_code) : null,
-        ],
-      );
-    }
-
-    await client.query(
-      `
-        UPDATE japan_underwear.carts
-        SET status = 'converted', converted_at = now(), updated_at = now()
-        WHERE id = $1::uuid
-          AND status = 'active'
-      `,
-      [handle.id],
-    );
-
     return {
-      id: orderId,
-      orderCode,
-      status: "submitted",
-      subtotal,
-      currency,
-      itemCount: itemResult.rows.reduce((sum, row) => sum + Number(row.quantity), 0),
-      locationCaptured: Boolean(location),
-      createdAt: new Date(orderResult.rows[0].created_at).toISOString(),
+      token: handle.token,
+      tokenChanged: false,
+      cart: await loadCart(client, handle.id),
     };
   });
 }

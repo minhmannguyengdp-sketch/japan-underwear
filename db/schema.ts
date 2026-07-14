@@ -14,6 +14,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import { users } from "@/db/auth-schema";
+
 const catalogSchema = pgSchema("japan_underwear");
 
 export const importStatus = catalogSchema.enum("catalog_import_status", [
@@ -232,13 +234,21 @@ export const orders = catalogSchema.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orderCode: text("order_code").notNull(),
-    sourceCartId: uuid("source_cart_id")
-      .notNull()
-      .references(() => carts.id, { onDelete: "restrict" }),
+    orderSource: text("order_source")
+      .$type<"legacy_cart" | "customer_checkout" | "staff_manual">()
+      .notNull(),
+    sourceCartId: uuid("source_cart_id").references(() => carts.id, {
+      onDelete: "restrict",
+    }),
+    manualRequestId: uuid("manual_request_id"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
     status: text("status")
       .$type<"submitted" | "confirmed" | "processing" | "completed" | "cancelled">()
       .notNull()
       .default("submitted"),
+    customerStoreName: text("customer_store_name"),
     customerName: text("customer_name").notNull(),
     customerPhone: text("customer_phone").notNull(),
     deliveryAddress: text("delivery_address"),
@@ -250,17 +260,63 @@ export const orders = catalogSchema.table(
     locationSource: text("location_source").$type<"browser_geolocation">(),
     subtotal: integer("subtotal").notNull(),
     currency: text("currency").notNull().default("VND"),
+    customerUserId: uuid("customer_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    clientRequestId: uuid("client_request_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex("orders_order_code_uidx").on(table.orderCode),
     uniqueIndex("orders_source_cart_uidx").on(table.sourceCartId),
+    uniqueIndex("orders_customer_client_request_uidx")
+      .on(table.customerUserId, table.clientRequestId)
+      .where(sql`${table.customerUserId} is not null and ${table.clientRequestId} is not null`),
+    uniqueIndex("orders_staff_manual_request_uidx")
+      .on(table.createdByUserId, table.manualRequestId)
+      .where(sql`${table.orderSource} = 'staff_manual'`),
     index("orders_status_created_idx").on(table.status, table.createdAt),
+    index("orders_source_created_idx").on(table.orderSource, table.createdAt),
     index("orders_customer_phone_idx").on(table.customerPhone),
     check(
       "orders_status_chk",
       sql`${table.status} in ('submitted', 'confirmed', 'processing', 'completed', 'cancelled')`,
+    ),
+    check(
+      "orders_order_source_chk",
+      sql`${table.orderSource} in ('legacy_cart', 'customer_checkout', 'staff_manual')`,
+    ),
+    check(
+      "orders_creation_identity_chk",
+      sql`(
+        ${table.orderSource} = 'legacy_cart'
+        and ${table.sourceCartId} is not null
+        and ${table.clientRequestId} is null
+        and ${table.manualRequestId} is null
+        and ${table.createdByUserId} is null
+      ) or (
+        ${table.orderSource} = 'customer_checkout'
+        and ${table.sourceCartId} is not null
+        and ${table.customerUserId} is not null
+        and ${table.clientRequestId} is not null
+        and ${table.manualRequestId} is null
+        and ${table.createdByUserId} is null
+      ) or (
+        ${table.orderSource} = 'staff_manual'
+        and ${table.sourceCartId} is null
+        and ${table.clientRequestId} is null
+        and ${table.manualRequestId} is not null
+        and ${table.createdByUserId} is not null
+      )`,
+    ),
+    check(
+      "orders_client_request_owner_chk",
+      sql`${table.clientRequestId} is null or ${table.customerUserId} is not null`,
+    ),
+    check(
+      "orders_customer_store_name_nonempty_chk",
+      sql`${table.customerStoreName} is null or btrim(${table.customerStoreName}) <> ''`,
     ),
     check("orders_customer_name_nonempty_chk", sql`btrim(${table.customerName}) <> ''`),
     check("orders_customer_phone_nonempty_chk", sql`btrim(${table.customerPhone}) <> ''`),

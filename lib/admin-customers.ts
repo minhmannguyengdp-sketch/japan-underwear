@@ -2,6 +2,7 @@ import { getPool } from "@/db/client";
 import type {
   AdminCustomerAuditEvent,
   AdminCustomerDetail,
+  AdminCustomerOrderStatus,
   AdminCustomerOrderSummary,
   AdminCustomerRole,
   AdminCustomerStatus,
@@ -45,6 +46,19 @@ function parseStatus(value: unknown): AdminCustomerStatus {
   throw new Error(`Database returned an unsupported customer status: ${String(value)}.`);
 }
 
+function parseOrderStatus(value: unknown): AdminCustomerOrderStatus {
+  if (
+    value === "submitted" ||
+    value === "confirmed" ||
+    value === "processing" ||
+    value === "completed" ||
+    value === "cancelled"
+  ) {
+    return value;
+  }
+  throw new Error(`Database returned an unsupported order status: ${String(value)}.`);
+}
+
 function parseRoles(value: unknown): AdminCustomerRole[] {
   if (!Array.isArray(value)) return [];
   return value.filter(
@@ -76,13 +90,9 @@ function mapSummary(row: DatabaseRow): AdminCustomerSummary {
 }
 
 function mapOrder(row: DatabaseRow): AdminCustomerOrderSummary {
-  const status = String(row.status);
-  if (status !== "submitted" && status !== "confirmed" && status !== "cancelled") {
-    throw new Error(`Database returned an unsupported order status: ${status}.`);
-  }
   return {
     orderCode: String(row.order_code),
-    status,
+    status: parseOrderStatus(row.status),
     subtotal: Number(row.subtotal),
     currency: String(row.currency),
     itemQuantity: Number(row.item_quantity ?? 0),

@@ -5,10 +5,12 @@ export type StaffOrderStatus =
   | "completed"
   | "cancelled";
 export type StaffOrderFilter = StaffOrderStatus | "all";
+export type StaffOrderSource = "legacy_cart" | "customer_checkout" | "staff_manual";
 
 export type StaffOrderSummary = {
   id: string;
   orderCode: string;
+  orderSource: StaffOrderSource;
   status: StaffOrderStatus;
   customerName: string;
   customerPhone: string;

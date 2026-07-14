@@ -175,6 +175,11 @@ run(
   [path.resolve(cwd, "scripts", "db", "apply-order-processing-lifecycle.mjs")],
   "Order processing lifecycle migration",
 );
+run(
+  process.execPath,
+  [path.resolve(cwd, "scripts", "db", "apply-manual-order-shared-service.mjs")],
+  "Manual order shared service migration",
+);
 
 let pending = await readPendingMigrations();
 if (pending.length === 0) {

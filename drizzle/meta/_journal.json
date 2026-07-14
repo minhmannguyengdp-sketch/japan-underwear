@@ -78,6 +78,13 @@
       "when": 1783890000000,
       "tag": "0010_order_processing_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783895000000,
+      "tag": "0011_manual_order_shared_service",
+      "breakpoints": true
     }
   ]
 }
