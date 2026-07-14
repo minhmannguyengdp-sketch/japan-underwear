@@ -17,12 +17,22 @@ type ApiErrorPayload = {
   error?: unknown;
 };
 
+type StaffOrderTargetStatus = Exclude<StaffOrderStatus, "submitted">;
+
 const FILTERS: Array<{ value: StaffOrderFilter; label: string }> = [
   { value: "all", label: "Tất cả" },
   { value: "submitted", label: "Chờ xử lý" },
   { value: "confirmed", label: "Đã xác nhận" },
+  { value: "processing", label: "Đang xử lý" },
+  { value: "completed", label: "Hoàn tất" },
   { value: "cancelled", label: "Đã hủy" },
 ];
+
+const NEXT_STATUS: Partial<Record<StaffOrderStatus, StaffOrderTargetStatus>> = {
+  submitted: "confirmed",
+  confirmed: "processing",
+  processing: "completed",
+};
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("vi-VN", {
@@ -47,6 +57,8 @@ function formatMoney(value: number, currency: string) {
 function statusLabel(status: StaffOrderStatus) {
   if (status === "submitted") return "Chờ xử lý";
   if (status === "confirmed") return "Đã xác nhận";
+  if (status === "processing") return "Đang xử lý";
+  if (status === "completed") return "Hoàn tất";
   return "Đã hủy";
 }
 
@@ -55,9 +67,34 @@ function statusTone(status: StaffOrderStatus) {
     return "border-amber-200 bg-amber-50 text-amber-800";
   }
   if (status === "confirmed") {
+    return "border-sky-200 bg-sky-50 text-sky-800";
+  }
+  if (status === "processing") {
+    return "border-violet-200 bg-violet-50 text-violet-800";
+  }
+  if (status === "completed") {
     return "border-emerald-200 bg-emerald-50 text-emerald-800";
   }
   return "border-rose-200 bg-rose-50 text-rose-800";
+}
+
+function nextActionLabel(status: StaffOrderTargetStatus) {
+  if (status === "confirmed") return "Xác nhận đơn";
+  if (status === "processing") return "Bắt đầu xử lý";
+  if (status === "completed") return "Đánh dấu hoàn tất";
+  return "Hủy đơn";
+}
+
+function canCancel(status: StaffOrderStatus) {
+  return status === "submitted" || status === "confirmed";
+}
+
+function isTransitionAvailable(
+  currentStatus: StaffOrderStatus,
+  targetStatus: StaffOrderTargetStatus,
+) {
+  return NEXT_STATUS[currentStatus] === targetStatus ||
+    (targetStatus === "cancelled" && canCancel(currentStatus));
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -75,7 +112,7 @@ async function readJson<T>(response: Response): Promise<T> {
 
 function makeIdempotencyKey(
   orderCode: string,
-  targetStatus: Exclude<StaffOrderStatus, "submitted">,
+  targetStatus: StaffOrderTargetStatus,
 ) {
   return `staff-web:${orderCode}:${targetStatus}:${globalThis.crypto.randomUUID()}`;
 }
@@ -147,10 +184,13 @@ export function StaffOrderDashboard({
     }
   }
 
-  async function transitionOrder(
-    targetStatus: Exclude<StaffOrderStatus, "submitted">,
-  ) {
-    if (!selectedOrder || selectedOrder.status !== "submitted") return;
+  async function transitionOrder(targetStatus: StaffOrderTargetStatus) {
+    if (
+      !selectedOrder ||
+      !isTransitionAvailable(selectedOrder.status, targetStatus)
+    ) {
+      return;
+    }
 
     const reason = targetStatus === "cancelled" ? cancelReason.trim() : null;
     if (targetStatus === "cancelled" && !reason) {
@@ -190,6 +230,11 @@ export function StaffOrderDashboard({
       setIsSubmitting(false);
     }
   }
+
+  const nextStatus = selectedOrder ? NEXT_STATUS[selectedOrder.status] : undefined;
+  const cancellationAvailable = selectedOrder
+    ? canCancel(selectedOrder.status)
+    : false;
 
   return (
     <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
@@ -412,45 +457,58 @@ export function StaffOrderDashboard({
               </div>
             </div>
 
-            {selectedOrder.status === "submitted" && (
+            {(nextStatus || cancellationAvailable) && (
               <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
                 <p className="text-xs font-black uppercase tracking-[0.12em] text-amber-700">
                   Xử lý đơn
                 </p>
-                <div className="mt-3 flex flex-wrap gap-3">
+                {nextStatus && (
                   <button
                     type="button"
                     disabled={isSubmitting}
-                    onClick={() => void transitionOrder("confirmed")}
-                    className="rounded-xl bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => void transitionOrder(nextStatus)}
+                    className="mt-3 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Xác nhận đơn
+                    {nextActionLabel(nextStatus)}
                   </button>
-                </div>
-                <label className="mt-4 block">
-                  <span className="text-sm font-black text-slate-700">
-                    Lý do hủy
-                  </span>
-                  <textarea
-                    value={cancelReason}
-                    disabled={isSubmitting}
-                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                      setCancelReason(event.target.value)
-                    }
-                    maxLength={1000}
-                    rows={3}
-                    placeholder="Bắt buộc khi hủy đơn"
-                    className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100"
-                  />
-                </label>
-                <button
-                  type="button"
-                  disabled={isSubmitting || !cancelReason.trim()}
-                  onClick={() => void transitionOrder("cancelled")}
-                  className="mt-3 rounded-xl border border-rose-300 bg-white px-4 py-3 text-sm font-black text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Hủy đơn
-                </button>
+                )}
+
+                {cancellationAvailable && (
+                  <>
+                    <label className="mt-4 block">
+                      <span className="text-sm font-black text-slate-700">
+                        Lý do hủy
+                      </span>
+                      <textarea
+                        value={cancelReason}
+                        disabled={isSubmitting}
+                        onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                          setCancelReason(event.target.value)
+                        }
+                        maxLength={1000}
+                        rows={3}
+                        placeholder="Bắt buộc khi hủy đơn"
+                        className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={isSubmitting || !cancelReason.trim()}
+                      onClick={() => void transitionOrder("cancelled")}
+                      className="mt-3 rounded-xl border border-rose-300 bg-white px-4 py-3 text-sm font-black text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Hủy đơn
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {!nextStatus && !cancellationAvailable && (
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">
+                {selectedOrder.status === "completed"
+                  ? "Đơn đã hoàn tất và không còn thao tác trạng thái."
+                  : "Đơn đã hủy và không còn thao tác trạng thái."}
               </div>
             )}
 
