@@ -1,4 +1,9 @@
-export type StaffOrderStatus = "submitted" | "confirmed" | "cancelled";
+export type StaffOrderStatus =
+  | "submitted"
+  | "confirmed"
+  | "processing"
+  | "completed"
+  | "cancelled";
 export type StaffOrderFilter = StaffOrderStatus | "all";
 
 export type StaffOrderSummary = {
