@@ -54,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify live-image color review workflow
+        run: npm run catalog:web:color:image-review:verify
+
       - name: Lint
         shell: bash
         run: |
