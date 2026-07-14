@@ -14,6 +14,7 @@
     "catalog:web:approve": "node scripts/catalog/approve-tuan-thuy-order-data.mjs",
     "catalog:web:import": "node scripts/catalog/import-tuan-thuy-order-data.mjs",
     "catalog:web:color:review": "node scripts/catalog/build-tuan-thuy-color-review.mjs",
+    "catalog:web:color:image-review": "node scripts/catalog/build-tuan-thuy-image-color-review.mjs",
     "catalog:web:color:approve": "node scripts/catalog/approve-tuan-thuy-color-review.mjs",
     "catalog:web:color:import": "node scripts/catalog/import-tuan-thuy-reviewed-colors.mjs",
     "catalog:sync": "node scripts/catalog/sync-active-catalog.mjs",
