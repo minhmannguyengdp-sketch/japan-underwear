@@ -18,9 +18,6 @@ type SelectionRow = {
 };
 
 type CheckoutForm = {
-  customerName: string;
-  customerPhone: string;
-  deliveryAddress: string;
   note: string;
 };
 
@@ -96,16 +93,12 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
   const [cartBusy, setCartBusy] = useState(false);
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState("");
+  const [checkoutRequestId, setCheckoutRequestId] = useState("");
   const [createdOrder, setCreatedOrder] = useState<CreatedOrder | null>(null);
   const [checkoutLocation, setCheckoutLocation] = useState<CheckoutLocationInput | null>(null);
   const [locationState, setLocationState] = useState<LocationState>("idle");
   const [locationMessage, setLocationMessage] = useState("");
-  const [checkout, setCheckout] = useState<CheckoutForm>({
-    customerName: "",
-    customerPhone: "",
-    deliveryAddress: "",
-    note: "",
-  });
+  const [checkout, setCheckout] = useState<CheckoutForm>({ note: "" });
 
   const selected = products.find((product) => product.id === selectedId) ?? null;
 
@@ -221,6 +214,7 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
       });
       const body = await readJson<{ cart: ServerCart }>(response);
       setCart(body.cart);
+      setCheckoutRequestId(crypto.randomUUID());
       setSelectedId(null);
       setCartOpen(true);
     } catch (addError) {
@@ -243,6 +237,7 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
       });
       const body = await readJson<{ cart: ServerCart }>(response);
       setCart(body.cart);
+      setCheckoutRequestId(crypto.randomUUID());
     } catch (updateError) {
       setCheckoutError(
         updateError instanceof Error ? updateError.message : "Không cập nhật được giỏ hàng.",
@@ -307,19 +302,23 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
     if (cart.items.length === 0 || cartBusy) return;
     setCartBusy(true);
     setCheckoutError("");
+    const requestId = checkoutRequestId || crypto.randomUUID();
+    if (!checkoutRequestId) setCheckoutRequestId(requestId);
     try {
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...checkout,
+          clientRequestId: requestId,
+          note: checkout.note,
           location: checkoutLocation,
         }),
       });
       const body = await readJson<{ order: CreatedOrder }>(response);
       setCreatedOrder(body.order);
       setCart(EMPTY_CART);
-      setCheckout({ customerName: "", customerPhone: "", deliveryAddress: "", note: "" });
+      setCheckoutRequestId("");
+      setCheckout({ note: "" });
       setCheckoutLocation(null);
       setLocationState("idle");
       setLocationMessage("");
@@ -499,7 +498,9 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
             <div className="min-h-0 flex-1 overflow-y-auto px-5">
               {createdOrder ? (
                 <div className="my-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
-                  <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-700">Đã tạo đơn</p>
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+                    {createdOrder.idempotentReplay ? "Đã xác nhận đơn cũ" : "Đã tạo đơn"}
+                  </p>
                   <p className="mt-2 text-2xl font-black">{createdOrder.orderCode}</p>
                   <p className="mt-2 text-sm leading-6">Đơn đã được lưu tại server với {createdOrder.itemCount} sản phẩm, tổng {formatVnd(createdOrder.subtotal)}.</p>
                   <p className="mt-2 text-sm font-semibold">
@@ -529,11 +530,14 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
 
               {!createdOrder && cart.items.length > 0 && (
                 <form onSubmit={submitOrder} className="mb-6 border-t border-slate-200 pt-5">
-                  <p className="font-black">Thông tin tạo đơn</p>
+                  <p className="font-black">Xác nhận tạo đơn</p>
                   <div className="mt-3 grid gap-3">
-                    <input required minLength={2} maxLength={120} value={checkout.customerName} onChange={(event) => setCheckout((current) => ({ ...current, customerName: event.target.value }))} placeholder="Tên khách hàng" className="h-11 rounded-xl border border-slate-200 px-3" />
-                    <input required minLength={8} maxLength={24} value={checkout.customerPhone} onChange={(event) => setCheckout((current) => ({ ...current, customerPhone: event.target.value }))} placeholder="Số điện thoại" className="h-11 rounded-xl border border-slate-200 px-3" />
-                    <textarea maxLength={500} value={checkout.deliveryAddress} onChange={(event) => setCheckout((current) => ({ ...current, deliveryAddress: event.target.value }))} placeholder="Địa chỉ giao hàng (có thể bổ sung sau)" className="min-h-20 rounded-xl border border-slate-200 p-3" />
+                    <div className="rounded-xl border border-tt-purple-200 bg-tt-purple-50 p-3 text-sm leading-6 text-slate-700">
+                      Tên cửa hàng, người liên hệ, điện thoại và địa chỉ được đọc từ hồ sơ server.
+                      <a href="/tai-khoan" className="ml-1 font-black text-tt-purple-700 underline">
+                        Kiểm tra hồ sơ
+                      </a>
+                    </div>
 
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <div className="flex items-start justify-between gap-3">
@@ -577,7 +581,10 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
                       )}
                     </div>
 
-                    <textarea maxLength={1000} value={checkout.note} onChange={(event) => setCheckout((current) => ({ ...current, note: event.target.value }))} placeholder="Ghi chú" className="min-h-20 rounded-xl border border-slate-200 p-3" />
+                    <textarea maxLength={1000} value={checkout.note} onChange={(event) => setCheckout((current) => ({ ...current, note: event.target.value }))} placeholder="Ghi chú cho đơn hàng" className="min-h-20 rounded-xl border border-slate-200 p-3" />
+                    <p className="text-xs leading-5 text-slate-500">
+                      Retry dùng cùng một clientRequestId cho tới khi có kết quả chắc chắn. Nội dung giỏ thay đổi sẽ tạo key mới.
+                    </p>
                   </div>
                   {checkoutError && <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{checkoutError}</p>}
                   <button type="submit" disabled={cartBusy} className="mt-4 w-full rounded-xl bg-ink-950 px-5 py-3.5 font-black text-white disabled:bg-slate-200 disabled:text-slate-400">

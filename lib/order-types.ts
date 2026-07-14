@@ -48,10 +48,11 @@ export type CheckoutInput = {
 export type CreatedOrder = {
   id: string;
   orderCode: string;
-  status: "submitted";
+  status: "submitted" | "confirmed" | "cancelled";
   subtotal: number;
   currency: string;
   itemCount: number;
   locationCaptured: boolean;
+  idempotentReplay?: boolean;
   createdAt: string;
 };

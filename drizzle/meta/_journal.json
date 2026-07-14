@@ -64,6 +64,13 @@
       "when": 1783880000000,
       "tag": "0008_customer_order_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783885000000,
+      "tag": "0009_phase6_checkout_onboarding",
+      "breakpoints": true
     }
   ]
 }

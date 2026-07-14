@@ -16,6 +16,12 @@ export async function CustomerAccountShortcut() {
             </p>
           </div>
           <Link
+            href="/tai-khoan"
+            className="rounded-xl border border-tt-purple-200 bg-tt-purple-50 px-4 py-2.5 text-sm font-black text-tt-purple-700"
+          >
+            Hồ sơ
+          </Link>
+          <Link
             href="/don-hang"
             className="rounded-xl bg-tt-purple-700 px-4 py-2.5 text-sm font-black text-white"
           >

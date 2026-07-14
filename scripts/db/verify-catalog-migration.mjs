@@ -17,9 +17,11 @@ const EXPECTED_TABLES = [
   "carts",
   "catalog_import_runs",
   "categories",
+  "customer_profiles",
   "order_items",
   "order_status_events",
   "orders",
+  "outbox_events",
   "product_colors",
   "product_images",
   "product_variants",
@@ -38,6 +40,7 @@ const EXPECTED_MIGRATIONS = [
   1783870000000,
   1783875000000,
   1783880000000,
+  1783885000000,
 ];
 
 const REQUIRED_INDEXES = [

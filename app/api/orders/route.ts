@@ -3,9 +3,9 @@ import { z } from "zod";
 
 import { requireAuthenticatedUser } from "@/lib/authz";
 import { clearCartCookie, readCartToken } from "@/lib/cart-http";
+import { createIdempotentCustomerOrder } from "@/lib/customer-checkout";
 import { customerOrderApiErrorResponse } from "@/lib/customer-order-http";
 import { listCustomerOrders } from "@/lib/customer-orders";
-import { createServerOrder } from "@/lib/server-ordering";
 
 export const dynamic = "force-dynamic";
 
@@ -40,14 +40,7 @@ const locationSchema = z
   });
 
 const checkoutSchema = z.object({
-  customerName: z.string().trim().min(2).max(120),
-  customerPhone: z
-    .string()
-    .trim()
-    .min(8)
-    .max(24)
-    .regex(/^[0-9+().\s-]+$/),
-  deliveryAddress: z.string().trim().max(500).optional().nullable(),
+  clientRequestId: z.string().uuid().optional(),
   note: z.string().trim().max(1000).optional().nullable(),
   location: locationSchema.optional().nullable(),
 });
@@ -72,19 +65,29 @@ export async function POST(request: NextRequest) {
         {
           error:
             locationIssue?.message ??
-            "Tên, số điện thoại hoặc thông tin tạo đơn không hợp lệ.",
+            "clientRequestId, ghi chú hoặc thông tin vị trí không hợp lệ.",
           code: locationIssue ? "invalid_checkout_location" : "invalid_checkout",
         },
         { status: 400 },
       );
     }
 
-    const order = await createServerOrder(
-      readCartToken(request),
-      context.userId,
-      parsed.data,
-    );
-    return clearCartCookie(NextResponse.json({ order }, { status: 201 }));
+    const cartToken = readCartToken(request);
+    const clientRequestId = parsed.data.clientRequestId ?? cartToken;
+    if (!clientRequestId) {
+      return NextResponse.json(
+        { error: "Thiếu clientRequestId và giỏ hàng hợp lệ.", code: "invalid_client_request_id" },
+        { status: 400 },
+      );
+    }
+
+    const order = await createIdempotentCustomerOrder(cartToken, context.userId, {
+      clientRequestId,
+      note: parsed.data.note,
+      location: parsed.data.location,
+    });
+    const status = order.idempotentReplay ? 200 : 201;
+    return clearCartCookie(NextResponse.json({ order }, { status }));
   } catch (error) {
     return customerOrderApiErrorResponse(error);
   }
