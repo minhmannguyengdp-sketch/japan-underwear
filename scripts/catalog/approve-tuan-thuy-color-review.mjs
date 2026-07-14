@@ -46,6 +46,19 @@ if (Number(review.summary?.unresolvedProductCount) !== 0) {
   );
 }
 
+const isExplicitTextAudit = Boolean(review.businessRules?.explicitWebsiteColorsOnly);
+const isManualLiveImageReview = Boolean(review.businessRules?.manualReviewOfLiveProductImages);
+const isSourceVerified = Boolean(review.businessRules?.sourceVerifiedColorsOnly) || isExplicitTextAudit;
+if (!isSourceVerified || (!isExplicitTextAudit && !isManualLiveImageReview)) {
+  throw new Error("Color review phải đến từ chữ màu công khai hoặc review thủ công ảnh live có URL bằng chứng.");
+}
+if (
+  isManualLiveImageReview &&
+  !review.businessRules?.noAutomatedColorInferenceFromFilenames
+) {
+  throw new Error("Review ảnh live phải cấm suy màu tự động từ tên file.");
+}
+
 const products = review.candidateProducts ?? [];
 if (products.length !== 30 || new Set(products.map((item) => item.key)).size !== 30) {
   throw new Error(`Phải có đúng 30 product màu được duyệt; nhận ${products.length}.`);
@@ -69,6 +82,9 @@ for (const product of products) {
     }
     if (!(color.evidenceUrls ?? []).length || !(color.evidenceTypes ?? []).length) {
       throw new Error(`Màu ${product.key}:${code} thiếu bằng chứng web.`);
+    }
+    if (isManualLiveImageReview && !(color.evidenceTypes ?? []).includes("manual-live-image-review")) {
+      throw new Error(`Màu ${product.key}:${code} thiếu dấu review thủ công ảnh live.`);
     }
     const uniqueKey = `${product.key}:${code}`;
     if (seenColorKeys.has(uniqueKey)) throw new Error(`Màu trùng: ${uniqueKey}`);
@@ -99,8 +115,13 @@ const approval = {
     approvedColorCount,
     preservesApprovedVariantPayloadSha256:
       review.sourceApprovedOrderData.approvedVariantPayloadSha256,
-    explicitWebsiteColorsOnly: true,
-    noColorInferenceFromImagesOrFilenames: true,
+    sourceVerifiedColorsOnly: true,
+    explicitWebsiteColorsOnly: isExplicitTextAudit,
+    manualReviewOfLiveProductImages: isManualLiveImageReview,
+    noAutomatedColorInferenceFromFilenames: true,
+    noColorInferenceFromImagesOrFilenames: Boolean(
+      review.businessRules?.noColorInferenceFromImagesOrFilenames,
+    ),
     colorImportIsSeparateFromVariantImport: true,
   },
   approvedProducts: products,
