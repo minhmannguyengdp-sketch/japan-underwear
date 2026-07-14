@@ -292,7 +292,6 @@ export const orders = catalogSchema.table(
       sql`(
         ${table.orderSource} = 'legacy_cart'
         and ${table.sourceCartId} is not null
-        and ${table.customerUserId} is null
         and ${table.clientRequestId} is null
         and ${table.manualRequestId} is null
         and ${table.createdByUserId} is null
