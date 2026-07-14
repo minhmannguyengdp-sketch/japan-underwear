@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
-import { createRequire } from "node:module";
+
 import { config as loadEnv } from "dotenv";
 import { Client } from "pg";
 
@@ -21,7 +22,6 @@ function run(command, args, label) {
     stdio: "inherit",
     shell: false,
   });
-
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error(`${label} thất bại với mã ${result.status ?? "unknown"}.`);
@@ -33,7 +33,6 @@ function resolveDrizzleCli() {
     path.resolve(cwd, "node_modules", "drizzle-kit", "bin.cjs"),
     path.resolve(cwd, "node_modules", "drizzle-kit", "dist", "bin.cjs"),
   ];
-
   try {
     const packageJsonPath = require.resolve("drizzle-kit/package.json");
     const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
@@ -45,9 +44,8 @@ function resolveDrizzleCli() {
       candidates.unshift(path.resolve(path.dirname(packageJsonPath), String(binValue)));
     }
   } catch {
-    // Fall back to the known local package layout below.
+    // Fall back to the known local package layout.
   }
-
   const cliPath = candidates.find((candidate) => existsSync(candidate));
   if (!cliPath) {
     throw new Error(
@@ -72,7 +70,6 @@ function readRepositoryMigrationTimes() {
   if (!Array.isArray(journal.entries) || journal.entries.length === 0) {
     throw new Error(`Drizzle journal không có migration tại ${journalPath}.`);
   }
-
   return journal.entries
     .map((entry) => Number(entry.when))
     .filter((value) => Number.isSafeInteger(value) && value > 0)
@@ -82,13 +79,11 @@ function readRepositoryMigrationTimes() {
 async function withMigrationJournal(callback) {
   const connectionString = process.env.DATABASE_URL?.trim();
   if (!connectionString) throw new Error("DATABASE_URL is required.");
-
   const client = new Client({
     connectionString,
     ssl: isLocalDatabase(connectionString) ? undefined : { rejectUnauthorized: false },
     connectionTimeoutMillis: 30_000,
   });
-
   try {
     await client.connect();
     const tableResult = await client.query(
@@ -121,65 +116,31 @@ async function readPendingMigrations() {
     const applied = new Set(
       appliedResult.rows.map((row) => Number(row.created_at)).filter(Number.isSafeInteger),
     );
-    const repository = readRepositoryMigrationTimes();
-    return repository.filter((createdAt) => !applied.has(createdAt));
+    return readRepositoryMigrationTimes().filter((createdAt) => !applied.has(createdAt));
   });
 }
 
-// Reconcile migrations with state-aware, transactional runners before asking
-// Drizzle to evaluate any future migration that does not yet have a runner.
-run(
-  process.execPath,
-  [path.resolve(cwd, "scripts", "db", "apply-order-variant-identity.mjs")],
-  "Order variant identity migration",
-);
-run(
-  process.execPath,
-  [path.resolve(cwd, "scripts", "db", "apply-server-cart-orders.mjs")],
-  "Server cart and orders migration",
-);
+function runDbScript(filename, label) {
+  run(process.execPath, [path.resolve(cwd, "scripts", "db", filename)], label);
+}
+
+runDbScript("apply-order-variant-identity.mjs", "Order variant identity migration");
+runDbScript("apply-server-cart-orders.mjs", "Server cart and orders migration");
 
 if (await isMigrationApplied(ORDER_PROCESSING_MIGRATION_CREATED_AT)) {
   console.log("\n=== Order status lifecycle migration ===");
   console.log("Migration 0010 đã active; bỏ qua runner 0005 để không hạ lifecycle về trạng thái cũ.");
 } else {
-  run(
-    process.execPath,
-    [path.resolve(cwd, "scripts", "db", "apply-order-status-lifecycle.mjs")],
-    "Order status lifecycle migration",
-  );
+  runDbScript("apply-order-status-lifecycle.mjs", "Order status lifecycle migration");
 }
 
-run(
-  process.execPath,
-  [path.resolve(cwd, "scripts", "db", "apply-checkout-geolocation.mjs")],
-  "Checkout geolocation migration",
-);
-run(
-  process.execPath,
-  [path.resolve(cwd, "scripts", "db", "apply-auth-foundation.mjs")],
-  "Auth foundation migration",
-);
-run(
-  process.execPath,
-  [path.resolve(cwd, "scripts", "db", "apply-customer-order-ownership.mjs")],
-  "Customer order ownership migration",
-);
-run(
-  process.execPath,
-  [path.resolve(cwd, "scripts", "db", "apply-phase6-checkout-onboarding.mjs")],
-  "Phase 6 checkout and onboarding migration",
-);
-run(
-  process.execPath,
-  [path.resolve(cwd, "scripts", "db", "apply-order-processing-lifecycle.mjs")],
-  "Order processing lifecycle migration",
-);
-run(
-  process.execPath,
-  [path.resolve(cwd, "scripts", "db", "apply-manual-order-shared-service.mjs")],
-  "Manual order shared service migration",
-);
+runDbScript("apply-checkout-geolocation.mjs", "Checkout geolocation migration");
+runDbScript("apply-auth-foundation.mjs", "Auth foundation migration");
+runDbScript("apply-customer-order-ownership.mjs", "Customer order ownership migration");
+runDbScript("apply-phase6-checkout-onboarding.mjs", "Phase 6 checkout and onboarding migration");
+runDbScript("apply-order-processing-lifecycle.mjs", "Order processing lifecycle migration");
+runDbScript("apply-manual-order-shared-service.mjs", "Manual order shared service migration");
+runDbScript("apply-catalog-price-management.mjs", "Catalog price management migration");
 
 let pending = await readPendingMigrations();
 if (pending.length === 0) {
