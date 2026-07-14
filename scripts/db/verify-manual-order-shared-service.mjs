@@ -145,9 +145,9 @@ async function verifyRuntime() {
     await client.query(
       `
         INSERT INTO japan_underwear.user_roles (user_id, role)
-        VALUES ($1::uuid, 'sales'), ($2::uuid, 'customer')
+        VALUES ($1::uuid, 'sales')
       `,
-      [staffUserId, customerUserId],
+      [staffUserId],
     );
     await client.query(
       `
