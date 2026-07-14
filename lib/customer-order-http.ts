@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { AuthorizationError } from "@/lib/authz";
+import { CustomerCartOwnershipError } from "@/lib/customer-cart-ownership";
 import { CustomerOrderError } from "@/lib/customer-orders";
 import { OrderingError } from "@/lib/server-ordering";
 
@@ -12,7 +13,11 @@ export function customerOrderApiErrorResponse(error: unknown) {
     );
   }
 
-  if (error instanceof CustomerOrderError || error instanceof OrderingError) {
+  if (
+    error instanceof CustomerCartOwnershipError ||
+    error instanceof CustomerOrderError ||
+    error instanceof OrderingError
+  ) {
     return NextResponse.json(
       { error: error.message, code: error.code },
       { status: error.status },
