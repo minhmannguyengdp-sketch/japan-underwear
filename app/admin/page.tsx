@@ -101,6 +101,12 @@ export default async function AdminPage() {
                 >
                   Khách hàng
                 </Link>
+                <Link
+                  href="/admin/catalog"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black hover:bg-slate-50"
+                >
+                  Catalog
+                </Link>
               </div>
               <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm">
                 <p className="font-black">{context.email ?? context.userId}</p>
