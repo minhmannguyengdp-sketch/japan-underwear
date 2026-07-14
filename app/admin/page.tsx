@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { signOut } from "@/auth";
@@ -81,6 +82,20 @@ export default async function AdminPage() {
               </p>
             </div>
             <div className="flex flex-col items-start gap-3 sm:items-end">
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/admin"
+                  className="rounded-xl bg-tt-purple-700 px-4 py-2.5 text-sm font-black text-white"
+                >
+                  Đơn hàng
+                </Link>
+                <Link
+                  href="/admin/khach-hang"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black hover:bg-slate-50"
+                >
+                  Khách hàng
+                </Link>
+              </div>
               <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm">
                 <p className="font-black">{context.email ?? context.userId}</p>
                 <p className="mt-1 text-slate-500">
