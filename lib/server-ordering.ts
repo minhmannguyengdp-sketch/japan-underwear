@@ -415,8 +415,17 @@ function normalizeCheckoutLocation(location: CheckoutInput["location"]) {
 
 export async function createServerOrder(
   requestedToken: string | null,
+  customerUserId: string,
   input: CheckoutInput,
 ): Promise<CreatedOrder> {
+  const normalizedCustomerUserId = customerUserId.trim().toLowerCase();
+  if (!UUID_PATTERN.test(normalizedCustomerUserId)) {
+    throw new OrderingError(
+      "Danh tính người dùng không hợp lệ.",
+      400,
+      "invalid_customer_user_id",
+    );
+  }
   const location = normalizeCheckoutLocation(input.location);
 
   return withTransaction(async (client) => {
@@ -507,11 +516,12 @@ export async function createServerOrder(
           location_collected_at,
           location_source,
           subtotal,
-          currency
+          currency,
+          customer_user_id
         )
         VALUES (
           $1, $2::uuid, 'submitted', $3, $4, $5, $6,
-          $7, $8, $9, $10::timestamptz, $11, $12, $13
+          $7, $8, $9, $10::timestamptz, $11, $12, $13, $14::uuid
         )
         RETURNING id, created_at
       `,
@@ -529,6 +539,7 @@ export async function createServerOrder(
         location?.source ?? null,
         subtotal,
         currency,
+        normalizedCustomerUserId,
       ],
     );
     const orderId = String(orderResult.rows[0].id);
