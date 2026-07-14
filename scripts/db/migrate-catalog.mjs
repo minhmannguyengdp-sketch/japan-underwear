@@ -136,6 +136,11 @@ run(
   [path.resolve(cwd, "scripts", "db", "apply-auth-foundation.mjs")],
   "Auth foundation migration",
 );
+run(
+  process.execPath,
+  [path.resolve(cwd, "scripts", "db", "apply-customer-order-ownership.mjs")],
+  "Customer order ownership migration",
+);
 
 let pending = await readPendingMigrations();
 if (pending.length === 0) {
