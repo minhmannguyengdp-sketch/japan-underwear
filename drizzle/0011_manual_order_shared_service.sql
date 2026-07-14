@@ -16,7 +16,7 @@ END
 WHERE "order_source" IS NULL;
 --> statement-breakpoint
 ALTER TABLE "japan_underwear"."orders"
-  ALTER COLUMN "order_source" SET DEFAULT 'customer_checkout';
+  ALTER COLUMN "order_source" DROP DEFAULT;
 --> statement-breakpoint
 ALTER TABLE "japan_underwear"."orders"
   ALTER COLUMN "order_source" SET NOT NULL;
@@ -40,6 +40,39 @@ BEGIN
   END IF;
 END
 $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION "japan_underwear"."derive_order_creation_source"()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.order_source IS NULL OR btrim(NEW.order_source) = '' THEN
+    NEW.order_source := CASE
+      WHEN NEW.manual_request_id IS NOT NULL AND NEW.created_by_user_id IS NOT NULL
+        THEN 'staff_manual'
+      WHEN NEW.source_cart_id IS NOT NULL
+           AND NEW.customer_user_id IS NOT NULL
+           AND NEW.client_request_id IS NOT NULL
+        THEN 'customer_checkout'
+      WHEN NEW.source_cart_id IS NOT NULL
+        THEN 'legacy_cart'
+      ELSE NULL
+    END;
+  ELSE
+    NEW.order_source := lower(btrim(NEW.order_source));
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS "orders_creation_source_derive_trg"
+  ON "japan_underwear"."orders";
+--> statement-breakpoint
+CREATE TRIGGER "orders_creation_source_derive_trg"
+BEFORE INSERT
+ON "japan_underwear"."orders"
+FOR EACH ROW EXECUTE FUNCTION "japan_underwear"."derive_order_creation_source"();
 --> statement-breakpoint
 ALTER TABLE "japan_underwear"."orders"
   DROP CONSTRAINT IF EXISTS "orders_order_source_chk";
