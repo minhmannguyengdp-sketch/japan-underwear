@@ -174,7 +174,14 @@ async function main() {
     fixture.price_override == null ? null : Number(fixture.price_override);
   const nextBasePrice =
     originalBasePrice >= 2_147_483_647 ? originalBasePrice - 1 : originalBasePrice + 1;
-  const nextVariantPrice = nextBasePrice >= 2_147_483_640 ? 0 : nextBasePrice + 7;
+  const nextVariantPrice =
+    originalVariantPrice === null
+      ? nextBasePrice >= 2_147_483_647
+        ? 0
+        : nextBasePrice + 1
+      : originalVariantPrice >= 2_147_483_647
+        ? originalVariantPrice - 1
+        : originalVariantPrice + 1;
   const actorUserId = crypto.randomUUID();
   const productRequestId = crypto.randomUUID();
   const colorRequestId = crypto.randomUUID();
