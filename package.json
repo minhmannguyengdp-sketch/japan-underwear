@@ -30,7 +30,7 @@
     "db:repair-product-identity": "node scripts/db/apply-product-identity.mjs",
     "db:repair-order-variant": "node scripts/db/apply-order-variant-identity.mjs",
     "db:repair-server-cart": "node scripts/db/apply-server-cart-orders.mjs",
-    "db:repair-order-status": "node scripts/db/apply-order-status-lifecycle.mjs",
+    "db:repair-order-status": "node scripts/db/apply-order-processing-lifecycle.mjs",
     "db:repair-checkout-location": "node scripts/db/apply-checkout-geolocation.mjs",
     "db:repair-auth": "node scripts/db/apply-auth-foundation.mjs",
     "db:repair-customer-orders": "node scripts/db/apply-customer-order-ownership.mjs",
