@@ -1,0 +1,39 @@
+name: Run customer order refactor once
+
+on:
+  push:
+    branches: [feat/customer-order-history]
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/customer-order-history
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract and execute refactor
+        shell: bash
+        run: |
+          awk '
+            /node <<'"'"'NODE'"'"'/ { capture=1; next }
+            capture && /^          NODE$/ { capture=0; exit }
+            capture { sub(/^          /, ""); print }
+          ' .github/workflows/refactor-customer-order-transaction.yml > /tmp/refactor.cjs
+          test -s /tmp/refactor.cjs
+          node /tmp/refactor.cjs
+          rm -f .github/workflows/run-customer-order-refactor.yml
+
+      - name: Commit atomic ownership design
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: write order owner inside checkout transaction"
+          git push origin HEAD:feat/customer-order-history
