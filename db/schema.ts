@@ -64,8 +64,12 @@ export const products = catalogSchema.table(
   "products",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    brandId: uuid("brand_id").notNull().references(() => brands.id, { onDelete: "restrict" }),
-    categoryId: uuid("category_id").notNull().references(() => categories.id, { onDelete: "restrict" }),
+    brandId: uuid("brand_id")
+      .notNull()
+      .references(() => brands.id, { onDelete: "restrict" }),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "restrict" }),
     modelCode: text("model_code").notNull(),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
@@ -80,7 +84,11 @@ export const products = catalogSchema.table(
   },
   (table) => [
     uniqueIndex("products_slug_uidx").on(table.slug),
-    uniqueIndex("products_brand_category_model_uidx").on(table.brandId, table.categoryId, table.modelCode),
+    uniqueIndex("products_brand_category_model_uidx").on(
+      table.brandId,
+      table.categoryId,
+      table.modelCode,
+    ),
     index("products_category_idx").on(table.categoryId),
     index("products_active_idx").on(table.isActive),
   ],
@@ -90,7 +98,9 @@ export const productColors = catalogSchema.table(
   "product_colors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
     code: text("code").notNull(),
     name: text("name").notNull(),
     swatch: text("swatch"),
@@ -109,7 +119,9 @@ export const productVariants = catalogSchema.table(
   "product_variants",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
     sizeCode: text("size_code").notNull(),
     cupCode: text("cup_code"),
     sku: text("sku"),
@@ -125,7 +137,9 @@ export const productVariants = catalogSchema.table(
     uniqueIndex("product_variants_product_size_no_cup_uidx")
       .on(table.productId, table.sizeCode)
       .where(sql`${table.cupCode} is null`),
-    uniqueIndex("product_variants_sku_uidx").on(table.sku).where(sql`${table.sku} is not null`),
+    uniqueIndex("product_variants_sku_uidx")
+      .on(table.sku)
+      .where(sql`${table.sku} is not null`),
     index("product_variants_product_idx").on(table.productId),
     check("product_variants_size_nonempty_chk", sql`btrim(${table.sizeCode}) <> ''`),
     check(
@@ -143,7 +157,9 @@ export const productImages = catalogSchema.table(
   "product_images",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
     colorId: uuid("color_id").references(() => productColors.id, { onDelete: "set null" }),
     r2Key: text("r2_key").notNull(),
     sourceFilename: text("source_filename"),
@@ -164,7 +180,10 @@ export const carts = catalogSchema.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     token: uuid("token").defaultRandom().notNull(),
-    status: text("status").$type<"active" | "converted" | "abandoned">().notNull().default("active"),
+    status: text("status")
+      .$type<"active" | "converted" | "abandoned">()
+      .notNull()
+      .default("active"),
     convertedAt: timestamp("converted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -180,9 +199,15 @@ export const cartItems = catalogSchema.table(
   "cart_items",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    cartId: uuid("cart_id").notNull().references(() => carts.id, { onDelete: "cascade" }),
-    productVariantId: uuid("product_variant_id").notNull().references(() => productVariants.id, { onDelete: "restrict" }),
-    colorId: uuid("color_id").notNull().references(() => productColors.id, { onDelete: "restrict" }),
+    cartId: uuid("cart_id")
+      .notNull()
+      .references(() => carts.id, { onDelete: "cascade" }),
+    productVariantId: uuid("product_variant_id")
+      .notNull()
+      .references(() => productVariants.id, { onDelete: "restrict" }),
+    colorId: uuid("color_id")
+      .notNull()
+      .references(() => productColors.id, { onDelete: "restrict" }),
     quantity: integer("quantity").notNull(),
     unitPriceSnapshot: integer("unit_price_snapshot").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -207,8 +232,13 @@ export const orders = catalogSchema.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orderCode: text("order_code").notNull(),
-    sourceCartId: uuid("source_cart_id").notNull().references(() => carts.id, { onDelete: "restrict" }),
-    status: text("status").$type<"submitted" | "confirmed" | "cancelled">().notNull().default("submitted"),
+    sourceCartId: uuid("source_cart_id")
+      .notNull()
+      .references(() => carts.id, { onDelete: "restrict" }),
+    status: text("status")
+      .$type<"submitted" | "confirmed" | "processing" | "completed" | "cancelled">()
+      .notNull()
+      .default("submitted"),
     customerName: text("customer_name").notNull(),
     customerPhone: text("customer_phone").notNull(),
     deliveryAddress: text("delivery_address"),
@@ -228,7 +258,10 @@ export const orders = catalogSchema.table(
     uniqueIndex("orders_source_cart_uidx").on(table.sourceCartId),
     index("orders_status_created_idx").on(table.status, table.createdAt),
     index("orders_customer_phone_idx").on(table.customerPhone),
-    check("orders_status_chk", sql`${table.status} in ('submitted', 'confirmed', 'cancelled')`),
+    check(
+      "orders_status_chk",
+      sql`${table.status} in ('submitted', 'confirmed', 'processing', 'completed', 'cancelled')`,
+    ),
     check("orders_customer_name_nonempty_chk", sql`btrim(${table.customerName}) <> ''`),
     check("orders_customer_phone_nonempty_chk", sql`btrim(${table.customerPhone}) <> ''`),
     check("orders_subtotal_chk", sql`${table.subtotal} >= 0`),
@@ -269,9 +302,15 @@ export const orderItems = catalogSchema.table(
   "order_items",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
-    productVariantId: uuid("product_variant_id").notNull().references(() => productVariants.id, { onDelete: "restrict" }),
-    colorId: uuid("color_id").notNull().references(() => productColors.id, { onDelete: "restrict" }),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    productVariantId: uuid("product_variant_id")
+      .notNull()
+      .references(() => productVariants.id, { onDelete: "restrict" }),
+    colorId: uuid("color_id")
+      .notNull()
+      .references(() => productColors.id, { onDelete: "restrict" }),
     quantity: integer("quantity").notNull(),
     unitPrice: integer("unit_price").notNull(),
     lineTotal: integer("line_total").notNull(),
@@ -294,7 +333,10 @@ export const orderItems = catalogSchema.table(
     index("order_items_color_idx").on(table.colorId),
     check("order_items_quantity_chk", sql`${table.quantity} between 1 and 999`),
     check("order_items_unit_price_chk", sql`${table.unitPrice} >= 0`),
-    check("order_items_line_total_chk", sql`${table.lineTotal} = ${table.unitPrice} * ${table.quantity}`),
+    check(
+      "order_items_line_total_chk",
+      sql`${table.lineTotal} = ${table.unitPrice} * ${table.quantity}`,
+    ),
   ],
 );
 

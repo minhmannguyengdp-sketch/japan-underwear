@@ -41,7 +41,13 @@ function normalizeOrderCode(value: string) {
 }
 
 function isCustomerOrderStatus(value: string): value is CustomerOrderStatus {
-  return value === "submitted" || value === "confirmed" || value === "cancelled";
+  return (
+    value === "submitted" ||
+    value === "confirmed" ||
+    value === "processing" ||
+    value === "completed" ||
+    value === "cancelled"
+  );
 }
 
 function toIso(value: unknown) {

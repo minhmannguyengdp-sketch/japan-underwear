@@ -217,16 +217,28 @@ async function verifyRuntime() {
         item.cup_code,
       ],
     );
+
+    const outboxPayload = JSON.stringify({
+      orderId,
+      orderCode,
+      customerUserId: userA.id,
+      clientRequestId: requestId,
+      subtotal: unitPrice * 2,
+      currency: item.currency,
+      itemCount: 2,
+      createdAt: new Date().toISOString(),
+    });
+
     await client.query(
       `
         INSERT INTO japan_underwear.outbox_events (
           aggregate_type, aggregate_id, event_type, payload
         ) VALUES (
           'order', $1::uuid, 'order.submitted',
-          jsonb_build_object('orderId', $1::uuid, 'clientRequestId', $2::uuid)
+          $2::jsonb
         )
       `,
-      [orderId, requestId],
+      [orderId, outboxPayload],
     );
     await client.query(
       "UPDATE japan_underwear.carts SET status = 'converted', converted_at = now() WHERE id = $1::uuid",
@@ -284,7 +296,12 @@ async function verifyRuntime() {
 
     const outbox = await client.query(
       `
-        SELECT status, attempts, payload->>'clientRequestId' AS client_request_id
+        SELECT
+          status,
+          attempts,
+          payload->>'orderCode' AS order_code,
+          payload->>'clientRequestId' AS client_request_id,
+          payload->>'itemCount' AS item_count
         FROM japan_underwear.outbox_events
         WHERE aggregate_id = $1::uuid
           AND event_type = 'order.submitted'
@@ -295,7 +312,9 @@ async function verifyRuntime() {
       outbox.rowCount !== 1 ||
       outbox.rows[0].status !== "pending" ||
       Number(outbox.rows[0].attempts) !== 0 ||
-      outbox.rows[0].client_request_id !== requestId
+      outbox.rows[0].order_code !== orderCode ||
+      outbox.rows[0].client_request_id !== requestId ||
+      Number(outbox.rows[0].item_count) !== 2
     ) {
       throw new Error("Transactional order.submitted outbox event is invalid.");
     }

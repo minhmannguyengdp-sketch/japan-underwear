@@ -11,12 +11,16 @@ export const dynamic = "force-dynamic";
 const STATUS_LABELS: Record<CustomerOrderStatus, string> = {
   submitted: "Đang chờ xác nhận",
   confirmed: "Đã xác nhận",
+  processing: "Đang xử lý",
+  completed: "Đã hoàn tất",
   cancelled: "Đã hủy",
 };
 
 const STATUS_CLASSES: Record<CustomerOrderStatus, string> = {
   submitted: "bg-amber-100 text-amber-800",
-  confirmed: "bg-emerald-100 text-emerald-800",
+  confirmed: "bg-sky-100 text-sky-800",
+  processing: "bg-violet-100 text-violet-800",
+  completed: "bg-emerald-100 text-emerald-800",
   cancelled: "bg-slate-200 text-slate-700",
 };
 

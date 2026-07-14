@@ -25,7 +25,13 @@ export class StaffOrderError extends Error {
 }
 
 export function isStaffOrderStatus(value: string): value is StaffOrderStatus {
-  return value === "submitted" || value === "confirmed" || value === "cancelled";
+  return (
+    value === "submitted" ||
+    value === "confirmed" ||
+    value === "processing" ||
+    value === "completed" ||
+    value === "cancelled"
+  );
 }
 
 function normalizeOrderCode(value: string) {
@@ -80,8 +86,7 @@ function mapOrderItem(row: DatabaseRow): StaffOrderItem {
     colorCode: String(row.color_code_snapshot),
     colorName: String(row.color_name_snapshot),
     sizeCode: String(row.size_code_snapshot),
-    cupCode:
-      row.cup_code_snapshot == null ? null : String(row.cup_code_snapshot),
+    cupCode: row.cup_code_snapshot == null ? null : String(row.cup_code_snapshot),
     quantity: Number(row.quantity),
     unitPrice: Number(row.unit_price),
     lineTotal: Number(row.line_total),
@@ -91,7 +96,6 @@ function mapOrderItem(row: DatabaseRow): StaffOrderItem {
 function mapStatusEvent(row: DatabaseRow): StaffOrderStatusEvent {
   const fromStatus = row.from_status == null ? null : String(row.from_status);
   const toStatus = String(row.to_status);
-
   if (
     (fromStatus !== null && !isStaffOrderStatus(fromStatus)) ||
     !isStaffOrderStatus(toStatus)
@@ -115,10 +119,7 @@ function mapStatusEvent(row: DatabaseRow): StaffOrderStatusEvent {
 function mapTransition(row: DatabaseRow): StaffOrderTransition {
   const previousStatus = String(row.previous_status);
   const currentStatus = String(row.current_status);
-  if (
-    !isStaffOrderStatus(previousStatus) ||
-    !isStaffOrderStatus(currentStatus)
-  ) {
+  if (!isStaffOrderStatus(previousStatus) || !isStaffOrderStatus(currentStatus)) {
     throw new Error("Database returned an unsupported transition result.");
   }
 
@@ -165,9 +166,7 @@ export async function listStaffOrders(
   return (result.rows as DatabaseRow[]).map(mapOrderSummary);
 }
 
-export async function getStaffOrder(
-  orderCode: string,
-): Promise<StaffOrderDetail> {
+export async function getStaffOrder(orderCode: string): Promise<StaffOrderDetail> {
   const normalizedOrderCode = normalizeOrderCode(orderCode);
   const orderResult = await getPool().query(
     `
@@ -201,11 +200,7 @@ export async function getStaffOrder(
   );
 
   if (orderResult.rowCount !== 1) {
-    throw new StaffOrderError(
-      "Không tìm thấy đơn hàng.",
-      404,
-      "order_not_found",
-    );
+    throw new StaffOrderError("Không tìm thấy đơn hàng.", 404, "order_not_found");
   }
 
   const orderRow = orderResult.rows[0] as DatabaseRow;
@@ -287,11 +282,7 @@ function rethrowTransitionDatabaseError(error: unknown): never {
   const code = typeof databaseError.code === "string" ? databaseError.code : "";
 
   if (code === "P0002") {
-    throw new StaffOrderError(
-      "Không tìm thấy đơn hàng.",
-      404,
-      "order_not_found",
-    );
+    throw new StaffOrderError("Không tìm thấy đơn hàng.", 404, "order_not_found");
   }
   if (code === "22023") {
     throw new StaffOrderError(

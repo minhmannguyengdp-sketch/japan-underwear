@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 
 import type {
   StaffOrderDetail,
@@ -17,12 +17,22 @@ type ApiErrorPayload = {
   error?: unknown;
 };
 
+type StaffOrderTargetStatus = Exclude<StaffOrderStatus, "submitted">;
+
 const FILTERS: Array<{ value: StaffOrderFilter; label: string }> = [
   { value: "all", label: "Tất cả" },
   { value: "submitted", label: "Chờ xử lý" },
   { value: "confirmed", label: "Đã xác nhận" },
+  { value: "processing", label: "Đang xử lý" },
+  { value: "completed", label: "Hoàn tất" },
   { value: "cancelled", label: "Đã hủy" },
 ];
+
+const NEXT_STATUS: Partial<Record<StaffOrderStatus, StaffOrderTargetStatus>> = {
+  submitted: "confirmed",
+  confirmed: "processing",
+  processing: "completed",
+};
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("vi-VN", {
@@ -47,6 +57,8 @@ function formatMoney(value: number, currency: string) {
 function statusLabel(status: StaffOrderStatus) {
   if (status === "submitted") return "Chờ xử lý";
   if (status === "confirmed") return "Đã xác nhận";
+  if (status === "processing") return "Đang xử lý";
+  if (status === "completed") return "Hoàn tất";
   return "Đã hủy";
 }
 
@@ -55,9 +67,36 @@ function statusTone(status: StaffOrderStatus) {
     return "border-amber-200 bg-amber-50 text-amber-800";
   }
   if (status === "confirmed") {
+    return "border-sky-200 bg-sky-50 text-sky-800";
+  }
+  if (status === "processing") {
+    return "border-violet-200 bg-violet-50 text-violet-800";
+  }
+  if (status === "completed") {
     return "border-emerald-200 bg-emerald-50 text-emerald-800";
   }
   return "border-rose-200 bg-rose-50 text-rose-800";
+}
+
+function nextActionLabel(status: StaffOrderTargetStatus) {
+  if (status === "confirmed") return "Xác nhận đơn";
+  if (status === "processing") return "Bắt đầu xử lý";
+  if (status === "completed") return "Đánh dấu hoàn tất";
+  return "Hủy đơn";
+}
+
+function canCancel(status: StaffOrderStatus) {
+  return status === "submitted" || status === "confirmed";
+}
+
+function isTransitionAvailable(
+  currentStatus: StaffOrderStatus,
+  targetStatus: StaffOrderTargetStatus,
+) {
+  return (
+    NEXT_STATUS[currentStatus] === targetStatus ||
+    (targetStatus === "cancelled" && canCancel(currentStatus))
+  );
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -75,7 +114,7 @@ async function readJson<T>(response: Response): Promise<T> {
 
 function makeIdempotencyKey(
   orderCode: string,
-  targetStatus: Exclude<StaffOrderStatus, "submitted">,
+  targetStatus: StaffOrderTargetStatus,
 ) {
   return `staff-web:${orderCode}:${targetStatus}:${globalThis.crypto.randomUUID()}`;
 }
@@ -88,11 +127,34 @@ export function StaffOrderDashboard({
   const [selectedOrder, setSelectedOrder] =
     useState<StaffOrderDetail | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const displayedCount = orders.length;
+
+  useEffect(() => {
+    if (!isDialogOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isSubmitting) {
+        setIsDialogOpen(false);
+        setSelectedOrder(null);
+        setCancelReason("");
+        setError(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isDialogOpen, isSubmitting]);
 
   async function loadOrders(nextFilter: StaffOrderFilter) {
     setIsLoadingList(true);
@@ -118,15 +180,25 @@ export function StaffOrderDashboard({
     }
   }
 
-  async function changeFilter(nextFilter: StaffOrderFilter) {
-    setFilter(nextFilter);
+  function closeOrderDialog() {
+    if (isSubmitting) return;
+    setIsDialogOpen(false);
     setSelectedOrder(null);
     setCancelReason("");
+    setError(null);
+  }
+
+  async function changeFilter(nextFilter: StaffOrderFilter) {
+    setFilter(nextFilter);
+    closeOrderDialog();
     await loadOrders(nextFilter);
   }
 
   async function openOrder(orderCode: string) {
+    setIsDialogOpen(true);
     setIsLoadingDetail(true);
+    setSelectedOrder(null);
+    setCancelReason("");
     setError(null);
     try {
       const response = await fetch(
@@ -135,7 +207,6 @@ export function StaffOrderDashboard({
       );
       const payload = await readJson<{ order: StaffOrderDetail }>(response);
       setSelectedOrder(payload.order);
-      setCancelReason("");
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -147,10 +218,13 @@ export function StaffOrderDashboard({
     }
   }
 
-  async function transitionOrder(
-    targetStatus: Exclude<StaffOrderStatus, "submitted">,
-  ) {
-    if (!selectedOrder || selectedOrder.status !== "submitted") return;
+  async function transitionOrder(targetStatus: StaffOrderTargetStatus) {
+    if (
+      !selectedOrder ||
+      !isTransitionAvailable(selectedOrder.status, targetStatus)
+    ) {
+      return;
+    }
 
     const reason = targetStatus === "cancelled" ? cancelReason.trim() : null;
     if (targetStatus === "cancelled" && !reason) {
@@ -191,8 +265,13 @@ export function StaffOrderDashboard({
     }
   }
 
+  const nextStatus = selectedOrder ? NEXT_STATUS[selectedOrder.status] : undefined;
+  const cancellationAvailable = selectedOrder
+    ? canCancel(selectedOrder.status)
+    : false;
+
   return (
-    <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
+    <div className="mt-8">
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -201,7 +280,7 @@ export function StaffOrderDashboard({
             </p>
             <h2 className="mt-1 text-2xl font-black">Đơn gần nhất</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Tối đa 100 đơn theo bộ lọc hiện tại.
+              Chạm vào card để mở chi tiết và xử lý trong cửa sổ riêng.
             </p>
           </div>
           <div className="rounded-2xl bg-amber-50 px-3 py-2 text-right">
@@ -228,15 +307,21 @@ export function StaffOrderDashboard({
           ))}
         </div>
 
-        <div className="mt-5 space-y-3">
+        {error && !isDialogOpen && (
+          <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800">
+            {error}
+          </div>
+        )}
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
           {isLoadingList && (
-            <p className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-600">
+            <p className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-600 lg:col-span-2">
               Đang tải danh sách đơn…
             </p>
           )}
 
           {!isLoadingList && orders.length === 0 && (
-            <p className="rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
+            <p className="rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 lg:col-span-2">
               Không có đơn phù hợp bộ lọc.
             </p>
           )}
@@ -247,11 +332,7 @@ export function StaffOrderDashboard({
                 key={order.id}
                 type="button"
                 onClick={() => void openOrder(order.orderCode)}
-                className={`w-full rounded-2xl border p-4 text-left transition hover:border-tt-purple-400 hover:shadow-md ${
-                  selectedOrder?.id === order.id
-                    ? "border-tt-purple-500 ring-2 ring-tt-purple-100"
-                    : "border-slate-200"
-                }`}
+                className="w-full rounded-2xl border border-slate-200 p-4 text-left transition hover:border-tt-purple-400 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tt-purple-500 focus-visible:ring-offset-2"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -278,217 +359,270 @@ export function StaffOrderDashboard({
         </div>
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        {error && (
-          <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800">
-            {error}
-          </div>
-        )}
-
-        {isLoadingDetail && (
-          <div className="grid min-h-80 place-items-center rounded-2xl bg-slate-50 text-sm font-bold text-slate-500">
-            Đang tải chi tiết đơn…
-          </div>
-        )}
-
-        {!isLoadingDetail && !selectedOrder && (
-          <div className="grid min-h-80 place-items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center">
-            <div>
-              <p className="text-2xl font-black text-slate-800">
-                Chọn một đơn để xử lý
+      {isDialogOpen && (
+        <div
+          role="presentation"
+          onMouseDown={closeOrderDialog}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/60 p-3 backdrop-blur-sm sm:p-6"
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Chi tiết và xử lý đơn hàng"
+            aria-busy={isLoadingDetail || isSubmitting}
+            onMouseDown={(event) => event.stopPropagation()}
+            className="max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]"
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
+              <p className="text-sm font-black text-slate-700">
+                {selectedOrder?.orderCode ?? "Chi tiết đơn hàng"}
               </p>
-              <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-                Chi tiết khách hàng, địa chỉ, item snapshot và toàn bộ lịch sử
-                trạng thái sẽ hiển thị ở đây.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {!isLoadingDetail && selectedOrder && (
-          <div>
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.14em] text-tt-purple-700">
-                  Chi tiết đơn
-                </p>
-                <h2 className="mt-1 text-2xl font-black">
-                  {selectedOrder.orderCode}
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Tạo {formatDateTime(selectedOrder.createdAt)} · cập nhật{" "}
-                  {formatDateTime(selectedOrder.updatedAt)}
-                </p>
-              </div>
-              <span
-                className={`rounded-full border px-3 py-1.5 text-sm font-black ${statusTone(selectedOrder.status)}`}
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={closeOrderDialog}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Đóng chi tiết đơn"
               >
-                {statusLabel(selectedOrder.status)}
-              </span>
+                Đóng ×
+              </button>
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-                  Khách hàng
-                </p>
-                <p className="mt-2 font-black">{selectedOrder.customerName}</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  {selectedOrder.customerPhone}
-                </p>
-                {selectedOrder.note && (
-                  <p className="mt-3 rounded-xl bg-white px-3 py-2 text-sm leading-6 text-slate-600">
-                    Ghi chú: {selectedOrder.note}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-                  Giao hàng
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-700">
-                  {selectedOrder.deliveryAddress ?? "Khách chưa nhập địa chỉ."}
-                </p>
-                {selectedOrder.location && (
-                  <div className="mt-3 rounded-xl bg-white px-3 py-2 text-sm text-slate-600">
-                    <p className="font-bold">
-                      {selectedOrder.location.latitude.toFixed(6)},{" "}
-                      {selectedOrder.location.longitude.toFixed(6)}
-                    </p>
-                    <p className="mt-1">
-                      Sai số khoảng{" "}
-                      {Math.round(selectedOrder.location.accuracyMeters)} m ·{" "}
-                      {formatDateTime(selectedOrder.location.collectedAt)}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-                    Item snapshot
-                  </p>
-                  <h3 className="mt-1 text-xl font-black">
-                    {selectedOrder.itemQuantity} sản phẩm
-                  </h3>
+            <div className="p-5 sm:p-6">
+              {error && (
+                <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800">
+                  {error}
                 </div>
-                <p className="text-xl font-black">
-                  {formatMoney(
-                    selectedOrder.subtotal,
-                    selectedOrder.currency,
-                  )}
-                </p>
-              </div>
+              )}
 
-              <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
-                {selectedOrder.items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="grid gap-3 border-b border-slate-200 p-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_auto]"
-                  >
+              {isLoadingDetail && (
+                <div className="grid min-h-80 place-items-center rounded-2xl bg-slate-50 text-sm font-bold text-slate-500">
+                  Đang tải chi tiết đơn…
+                </div>
+              )}
+
+              {!isLoadingDetail && !selectedOrder && !error && (
+                <div className="grid min-h-80 place-items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center">
+                  <p className="text-sm font-bold text-slate-500">
+                    Không có dữ liệu chi tiết đơn.
+                  </p>
+                </div>
+              )}
+
+              {!isLoadingDetail && selectedOrder && (
+                <div>
+                  <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
-                      <p className="font-black">
-                        {item.productCode} · {item.productName}
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-tt-purple-700">
+                        Chi tiết đơn
+                      </p>
+                      <h2 className="mt-1 text-2xl font-black">
+                        {selectedOrder.orderCode}
+                      </h2>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Tạo {formatDateTime(selectedOrder.createdAt)} · cập nhật{" "}
+                        {formatDateTime(selectedOrder.updatedAt)}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full border px-3 py-1.5 text-sm font-black ${statusTone(selectedOrder.status)}`}
+                    >
+                      {statusLabel(selectedOrder.status)}
+                    </span>
+                  </div>
+
+                  <div className="mt-6 grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                        Khách hàng
+                      </p>
+                      <p className="mt-2 font-black">
+                        {selectedOrder.customerName}
                       </p>
                       <p className="mt-1 text-sm text-slate-600">
-                        Màu {item.colorCode} — {item.colorName} · Size{" "}
-                        {item.sizeCode}
-                        {item.cupCode ?? ""}
+                        {selectedOrder.customerPhone}
                       </p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {formatMoney(item.unitPrice, selectedOrder.currency)} ×{" "}
-                        {item.quantity}
+                      {selectedOrder.note && (
+                        <p className="mt-3 rounded-xl bg-white px-3 py-2 text-sm leading-6 text-slate-600">
+                          Ghi chú: {selectedOrder.note}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                        Giao hàng
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-slate-700">
+                        {selectedOrder.deliveryAddress ??
+                          "Khách chưa nhập địa chỉ."}
+                      </p>
+                      {selectedOrder.location && (
+                        <div className="mt-3 rounded-xl bg-white px-3 py-2 text-sm text-slate-600">
+                          <p className="font-bold">
+                            {selectedOrder.location.latitude.toFixed(6)},{" "}
+                            {selectedOrder.location.longitude.toFixed(6)}
+                          </p>
+                          <p className="mt-1">
+                            Sai số khoảng{" "}
+                            {Math.round(
+                              selectedOrder.location.accuracyMeters,
+                            )}{" "}
+                            m ·{" "}
+                            {formatDateTime(
+                              selectedOrder.location.collectedAt,
+                            )}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <div className="flex items-end justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                          Item snapshot
+                        </p>
+                        <h3 className="mt-1 text-xl font-black">
+                          {selectedOrder.itemQuantity} sản phẩm
+                        </h3>
+                      </div>
+                      <p className="text-xl font-black">
+                        {formatMoney(
+                          selectedOrder.subtotal,
+                          selectedOrder.currency,
+                        )}
                       </p>
                     </div>
-                    <p className="font-black">
-                      {formatMoney(item.lineTotal, selectedOrder.currency)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            {selectedOrder.status === "submitted" && (
-              <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                <p className="text-xs font-black uppercase tracking-[0.12em] text-amber-700">
-                  Xử lý đơn
-                </p>
-                <div className="mt-3 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={() => void transitionOrder("confirmed")}
-                    className="rounded-xl bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Xác nhận đơn
-                  </button>
+                    <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
+                      {selectedOrder.items.map((item) => (
+                        <div
+                          key={item.id}
+                          className="grid gap-3 border-b border-slate-200 p-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_auto]"
+                        >
+                          <div>
+                            <p className="font-black">
+                              {item.productCode} · {item.productName}
+                            </p>
+                            <p className="mt-1 text-sm text-slate-600">
+                              Màu {item.colorCode} — {item.colorName} · Size{" "}
+                              {item.sizeCode}
+                              {item.cupCode ?? ""}
+                            </p>
+                            <p className="mt-1 text-sm text-slate-500">
+                              {formatMoney(
+                                item.unitPrice,
+                                selectedOrder.currency,
+                              )}{" "}
+                              × {item.quantity}
+                            </p>
+                          </div>
+                          <p className="font-black">
+                            {formatMoney(
+                              item.lineTotal,
+                              selectedOrder.currency,
+                            )}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {(nextStatus || cancellationAvailable) && (
+                    <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.12em] text-amber-700">
+                        Xử lý đơn
+                      </p>
+                      {nextStatus && (
+                        <button
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={() => void transitionOrder(nextStatus)}
+                          className="mt-3 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {nextActionLabel(nextStatus)}
+                        </button>
+                      )}
+
+                      {cancellationAvailable && (
+                        <>
+                          <label className="mt-4 block">
+                            <span className="text-sm font-black text-slate-700">
+                              Lý do hủy
+                            </span>
+                            <textarea
+                              value={cancelReason}
+                              disabled={isSubmitting}
+                              onChange={(
+                                event: ChangeEvent<HTMLTextAreaElement>,
+                              ) => setCancelReason(event.target.value)}
+                              maxLength={1000}
+                              rows={3}
+                              placeholder="Bắt buộc khi hủy đơn"
+                              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            disabled={isSubmitting || !cancelReason.trim()}
+                            onClick={() => void transitionOrder("cancelled")}
+                            className="mt-3 rounded-xl border border-rose-300 bg-white px-4 py-3 text-sm font-black text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Hủy đơn
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {!nextStatus && !cancellationAvailable && (
+                    <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">
+                      {selectedOrder.status === "completed"
+                        ? "Đơn đã hoàn tất và không còn thao tác trạng thái."
+                        : "Đơn đã hủy và không còn thao tác trạng thái."}
+                    </div>
+                  )}
+
+                  <div className="mt-6">
+                    <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                      Lịch sử trạng thái
+                    </p>
+                    <div className="mt-3 space-y-3">
+                      {selectedOrder.history.map((event) => (
+                        <div
+                          key={event.id}
+                          className="rounded-2xl border border-slate-200 p-4"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <p className="font-black">
+                              {event.fromStatus
+                                ? `${statusLabel(event.fromStatus)} → ${statusLabel(event.toStatus)}`
+                                : `Khởi tạo → ${statusLabel(event.toStatus)}`}
+                            </p>
+                            <p className="text-sm text-slate-500">
+                              {formatDateTime(event.createdAt)}
+                            </p>
+                          </div>
+                          <p className="mt-2 text-sm text-slate-600">
+                            {event.actorSource} · {event.actorLabel}
+                          </p>
+                          {event.reason && (
+                            <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                              {event.reason}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <label className="mt-4 block">
-                  <span className="text-sm font-black text-slate-700">
-                    Lý do hủy
-                  </span>
-                  <textarea
-                    value={cancelReason}
-                    disabled={isSubmitting}
-                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                      setCancelReason(event.target.value)
-                    }
-                    maxLength={1000}
-                    rows={3}
-                    placeholder="Bắt buộc khi hủy đơn"
-                    className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100"
-                  />
-                </label>
-                <button
-                  type="button"
-                  disabled={isSubmitting || !cancelReason.trim()}
-                  onClick={() => void transitionOrder("cancelled")}
-                  className="mt-3 rounded-xl border border-rose-300 bg-white px-4 py-3 text-sm font-black text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Hủy đơn
-                </button>
-              </div>
-            )}
-
-            <div className="mt-6">
-              <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-                Lịch sử trạng thái
-              </p>
-              <div className="mt-3 space-y-3">
-                {selectedOrder.history.map((event) => (
-                  <div
-                    key={event.id}
-                    className="rounded-2xl border border-slate-200 p-4"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <p className="font-black">
-                        {event.fromStatus
-                          ? `${statusLabel(event.fromStatus)} → ${statusLabel(event.toStatus)}`
-                          : `Khởi tạo → ${statusLabel(event.toStatus)}`}
-                      </p>
-                      <p className="text-sm text-slate-500">
-                        {formatDateTime(event.createdAt)}
-                      </p>
-                    </div>
-                    <p className="mt-2 text-sm text-slate-600">
-                      {event.actorSource} · {event.actorLabel}
-                    </p>
-                    {event.reason && (
-                      <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                        {event.reason}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
+              )}
             </div>
-          </div>
-        )}
-      </section>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

@@ -71,6 +71,13 @@
       "when": 1783885000000,
       "tag": "0009_phase6_checkout_onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783890000000,
+      "tag": "0010_order_processing_lifecycle",
+      "breakpoints": true
     }
   ]
 }

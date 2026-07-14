@@ -1,4 +1,9 @@
-export type CustomerOrderStatus = "submitted" | "confirmed" | "cancelled";
+export type CustomerOrderStatus =
+  | "submitted"
+  | "confirmed"
+  | "processing"
+  | "completed"
+  | "cancelled";
 
 export type CustomerOrderSummary = {
   orderCode: string;

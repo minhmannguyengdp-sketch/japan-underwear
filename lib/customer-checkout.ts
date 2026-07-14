@@ -376,6 +376,17 @@ export async function createIdempotentCustomerOrder(
       );
     }
 
+    const outboxPayload = {
+      orderId,
+      orderCode,
+      customerUserId: normalizedCustomerUserId,
+      clientRequestId: normalizedClientRequestId,
+      subtotal,
+      currency,
+      itemCount,
+      createdAt,
+    };
+
     await client.query(
       `
         INSERT INTO japan_underwear.outbox_events (
@@ -387,28 +398,10 @@ export async function createIdempotentCustomerOrder(
           'order',
           $1::uuid,
           'order.submitted',
-          jsonb_build_object(
-            'orderId', $1::uuid,
-            'orderCode', $2,
-            'customerUserId', $3::uuid,
-            'clientRequestId', $4::uuid,
-            'subtotal', $5,
-            'currency', $6,
-            'itemCount', $7,
-            'createdAt', $8::timestamptz
-          )
+          $2::jsonb
         )
       `,
-      [
-        orderId,
-        orderCode,
-        normalizedCustomerUserId,
-        normalizedClientRequestId,
-        subtotal,
-        currency,
-        itemCount,
-        createdAt,
-      ],
+      [orderId, JSON.stringify(outboxPayload)],
     );
 
     const converted = await client.query(

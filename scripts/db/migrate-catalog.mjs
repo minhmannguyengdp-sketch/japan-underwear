@@ -11,6 +11,8 @@ const require = createRequire(import.meta.url);
 loadEnv({ path: path.resolve(cwd, ".env.local"), override: true, quiet: true });
 loadEnv({ path: path.resolve(cwd, ".env"), override: false, quiet: true });
 
+const ORDER_PROCESSING_MIGRATION_CREATED_AT = 1783890000000;
+
 function run(command, args, label) {
   console.log(`\n=== ${label} ===`);
   const result = spawnSync(command, args, {
@@ -77,7 +79,7 @@ function readRepositoryMigrationTimes() {
     .sort((left, right) => left - right);
 }
 
-async function readPendingMigrations() {
+async function withMigrationJournal(callback) {
   const connectionString = process.env.DATABASE_URL?.trim();
   if (!connectionString) throw new Error("DATABASE_URL is required.");
 
@@ -95,7 +97,24 @@ async function readPendingMigrations() {
     if (!tableResult.rows[0]?.table_name) {
       throw new Error("drizzle.__drizzle_migrations does not exist.");
     }
+    return await callback(client);
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
 
+async function isMigrationApplied(createdAt) {
+  return withMigrationJournal(async (client) => {
+    const result = await client.query(
+      "SELECT 1 FROM drizzle.__drizzle_migrations WHERE created_at = $1",
+      [createdAt],
+    );
+    return result.rowCount === 1;
+  });
+}
+
+async function readPendingMigrations() {
+  return withMigrationJournal(async (client) => {
     const appliedResult = await client.query(
       "SELECT created_at FROM drizzle.__drizzle_migrations ORDER BY created_at",
     );
@@ -104,9 +123,7 @@ async function readPendingMigrations() {
     );
     const repository = readRepositoryMigrationTimes();
     return repository.filter((createdAt) => !applied.has(createdAt));
-  } finally {
-    await client.end().catch(() => undefined);
-  }
+  });
 }
 
 // Reconcile migrations with state-aware, transactional runners before asking
@@ -121,11 +138,18 @@ run(
   [path.resolve(cwd, "scripts", "db", "apply-server-cart-orders.mjs")],
   "Server cart and orders migration",
 );
-run(
-  process.execPath,
-  [path.resolve(cwd, "scripts", "db", "apply-order-status-lifecycle.mjs")],
-  "Order status lifecycle migration",
-);
+
+if (await isMigrationApplied(ORDER_PROCESSING_MIGRATION_CREATED_AT)) {
+  console.log("\n=== Order status lifecycle migration ===");
+  console.log("Migration 0010 đã active; bỏ qua runner 0005 để không hạ lifecycle về trạng thái cũ.");
+} else {
+  run(
+    process.execPath,
+    [path.resolve(cwd, "scripts", "db", "apply-order-status-lifecycle.mjs")],
+    "Order status lifecycle migration",
+  );
+}
+
 run(
   process.execPath,
   [path.resolve(cwd, "scripts", "db", "apply-checkout-geolocation.mjs")],
@@ -145,6 +169,11 @@ run(
   process.execPath,
   [path.resolve(cwd, "scripts", "db", "apply-phase6-checkout-onboarding.mjs")],
   "Phase 6 checkout and onboarding migration",
+);
+run(
+  process.execPath,
+  [path.resolve(cwd, "scripts", "db", "apply-order-processing-lifecycle.mjs")],
+  "Order processing lifecycle migration",
 );
 
 let pending = await readPendingMigrations();
