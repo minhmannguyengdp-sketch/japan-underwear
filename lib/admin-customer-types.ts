@@ -1,5 +1,11 @@
 export type AdminCustomerStatus = "active" | "blocked";
 export type AdminCustomerRole = "customer" | "sales" | "admin";
+export type AdminCustomerOrderStatus =
+  | "submitted"
+  | "confirmed"
+  | "processing"
+  | "completed"
+  | "cancelled";
 
 export type AdminCustomerSummary = {
   userId: string;
@@ -22,7 +28,7 @@ export type AdminCustomerSummary = {
 
 export type AdminCustomerOrderSummary = {
   orderCode: string;
-  status: "submitted" | "confirmed" | "cancelled";
+  status: AdminCustomerOrderStatus;
   subtotal: number;
   currency: string;
   itemQuantity: number;
