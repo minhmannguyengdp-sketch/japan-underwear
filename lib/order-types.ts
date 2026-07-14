@@ -48,7 +48,7 @@ export type CheckoutInput = {
 export type CreatedOrder = {
   id: string;
   orderCode: string;
-  status: "submitted" | "confirmed" | "cancelled";
+  status: "submitted" | "confirmed" | "processing" | "completed" | "cancelled";
   subtotal: number;
   currency: string;
   itemCount: number;
