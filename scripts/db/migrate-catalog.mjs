@@ -141,6 +141,11 @@ run(
   [path.resolve(cwd, "scripts", "db", "apply-customer-order-ownership.mjs")],
   "Customer order ownership migration",
 );
+run(
+  process.execPath,
+  [path.resolve(cwd, "scripts", "db", "apply-phase6-checkout-onboarding.mjs")],
+  "Phase 6 checkout and onboarding migration",
+);
 
 let pending = await readPendingMigrations();
 if (pending.length === 0) {
