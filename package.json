@@ -34,7 +34,8 @@
     "db:repair-checkout-location": "node scripts/db/apply-checkout-geolocation.mjs",
     "db:repair-auth": "node scripts/db/apply-auth-foundation.mjs",
     "db:repair-customer-orders": "node scripts/db/apply-customer-order-ownership.mjs",
-    "db:verify": "node scripts/db/verify-catalog-migration.mjs && node scripts/db/verify-order-status-lifecycle.mjs && node scripts/db/verify-checkout-geolocation.mjs && node scripts/db/verify-auth-foundation.mjs && node scripts/db/verify-customer-order-ownership.mjs",
+    "db:repair-phase6": "node scripts/db/apply-phase6-checkout-onboarding.mjs",
+    "db:verify": "node scripts/db/verify-catalog-migration.mjs && node scripts/db/verify-order-status-lifecycle.mjs && node scripts/db/verify-checkout-geolocation.mjs && node scripts/db/verify-auth-foundation.mjs && node scripts/db/verify-customer-order-ownership.mjs && node scripts/db/verify-phase6-checkout-onboarding.mjs",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
