@@ -13,7 +13,7 @@ type RouteContext = {
 
 const transitionSchema = z
   .object({
-    status: z.enum(["confirmed", "cancelled"]),
+    status: z.enum(["confirmed", "processing", "completed", "cancelled"]),
     reason: z.string().trim().max(1000).optional().nullable(),
     idempotencyKey: z.string().trim().min(8).max(160),
   })
