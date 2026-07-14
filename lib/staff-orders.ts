@@ -2,6 +2,7 @@ import { getPool } from "@/db/client";
 import type {
   StaffOrderDetail,
   StaffOrderItem,
+  StaffOrderSource,
   StaffOrderStatus,
   StaffOrderStatusEvent,
   StaffOrderSummary,
@@ -34,6 +35,14 @@ export function isStaffOrderStatus(value: string): value is StaffOrderStatus {
   );
 }
 
+function isStaffOrderSource(value: string): value is StaffOrderSource {
+  return (
+    value === "legacy_cart" ||
+    value === "customer_checkout" ||
+    value === "staff_manual"
+  );
+}
+
 function normalizeOrderCode(value: string) {
   const normalized = value.trim().toUpperCase();
   if (!ORDER_CODE_PATTERN.test(normalized)) {
@@ -56,13 +65,18 @@ function toNullableIso(value: unknown) {
 
 function mapOrderSummary(row: DatabaseRow): StaffOrderSummary {
   const status = String(row.status);
+  const orderSource = String(row.order_source);
   if (!isStaffOrderStatus(status)) {
     throw new Error(`Database returned an unsupported order status: ${status}.`);
+  }
+  if (!isStaffOrderSource(orderSource)) {
+    throw new Error(`Database returned an unsupported order source: ${orderSource}.`);
   }
 
   return {
     id: String(row.id),
     orderCode: String(row.order_code),
+    orderSource,
     status,
     customerName: String(row.customer_name),
     customerPhone: String(row.customer_phone),
@@ -143,6 +157,7 @@ export async function listStaffOrders(
       SELECT
         orders.id,
         orders.order_code,
+        orders.order_source,
         orders.status,
         orders.customer_name,
         orders.customer_phone,
@@ -173,6 +188,7 @@ export async function getStaffOrder(orderCode: string): Promise<StaffOrderDetail
       SELECT
         orders.id,
         orders.order_code,
+        orders.order_source,
         orders.status,
         orders.customer_name,
         orders.customer_phone,
