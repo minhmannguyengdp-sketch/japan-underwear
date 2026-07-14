@@ -235,7 +235,6 @@ async function verifyAppliedState() {
     WHERE NOT (
       (order_source = 'legacy_cart'
         AND source_cart_id IS NOT NULL
-        AND customer_user_id IS NULL
         AND client_request_id IS NULL
         AND manual_request_id IS NULL
         AND created_by_user_id IS NULL)
