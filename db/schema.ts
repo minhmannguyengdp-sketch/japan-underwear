@@ -236,8 +236,7 @@ export const orders = catalogSchema.table(
     orderCode: text("order_code").notNull(),
     orderSource: text("order_source")
       .$type<"legacy_cart" | "customer_checkout" | "staff_manual">()
-      .notNull()
-      .default("customer_checkout"),
+      .notNull(),
     sourceCartId: uuid("source_cart_id").references(() => carts.id, {
       onDelete: "restrict",
     }),
