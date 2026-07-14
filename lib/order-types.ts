@@ -53,6 +53,6 @@ export type CreatedOrder = {
   currency: string;
   itemCount: number;
   locationCaptured: boolean;
-  idempotentReplay: boolean;
+  idempotentReplay?: boolean;
   createdAt: string;
 };
