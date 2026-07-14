@@ -1,12 +1,16 @@
-import { randomUUID } from "node:crypto";
-
 import type { PoolClient } from "pg";
 
-import { getPool } from "@/db/client";
 import type { CheckoutLocationInput, CreatedOrder } from "@/lib/order-types";
+import {
+  createOrderFromSelections,
+  normalizeOrderUuid,
+  type OrderSelectionInput,
+  withOrderTransaction,
+} from "@/lib/order-creation";
 import { OrderingError } from "@/lib/server-ordering";
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_LOCATION_AGE_MS = 30 * 60 * 1000;
 const MAX_LOCATION_FUTURE_MS = 5 * 60 * 1000;
 
@@ -22,29 +26,6 @@ type ProfileRow = {
   phone: string;
   delivery_address: string;
 };
-
-async function withTransaction<T>(work: (client: PoolClient) => Promise<T>) {
-  const client = await getPool().connect();
-  await client.query("BEGIN");
-  try {
-    const result = await work(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-function normalizeUuid(value: string, code: string) {
-  const normalized = value.trim().toLowerCase();
-  if (!UUID_PATTERN.test(normalized)) {
-    throw new OrderingError("Mã yêu cầu checkout không hợp lệ.", 400, code);
-  }
-  return normalized;
-}
 
 function normalizeCheckoutLocation(location: CheckoutLocationInput | null | undefined) {
   if (!location) return null;
@@ -80,12 +61,7 @@ function normalizeCheckoutLocation(location: CheckoutLocationInput | null | unde
     accuracyMeters: location.accuracyMeters,
     collectedAt: new Date(collectedAt).toISOString(),
     source: location.source,
-  };
-}
-
-function makeOrderCode() {
-  const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
-  return `TT-${date}-${randomUUID().slice(0, 8).toUpperCase()}`;
+  } satisfies CheckoutLocationInput;
 }
 
 async function findExistingOrder(
@@ -161,15 +137,18 @@ export async function createIdempotentCustomerOrder(
   customerUserId: string,
   input: CustomerCheckoutInput,
 ): Promise<CreatedOrder> {
-  const normalizedCustomerUserId = normalizeUuid(customerUserId, "invalid_customer_user_id");
-  const normalizedClientRequestId = normalizeUuid(
+  const normalizedCustomerUserId = normalizeOrderUuid(
+    customerUserId,
+    "invalid_customer_user_id",
+  );
+  const normalizedClientRequestId = normalizeOrderUuid(
     input.clientRequestId,
     "invalid_client_request_id",
   );
   const location = normalizeCheckoutLocation(input.location);
-  const note = input.note?.trim() || null;
+  const cartToken = requestedToken?.trim().toLowerCase() ?? "";
 
-  return withTransaction(async (client) => {
+  return withOrderTransaction(async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
       normalizedCustomerUserId,
       normalizedClientRequestId,
@@ -184,7 +163,7 @@ export async function createIdempotentCustomerOrder(
 
     const profile = await loadProfileForCheckout(client, normalizedCustomerUserId);
 
-    if (!requestedToken || !UUID_PATTERN.test(requestedToken)) {
+    if (!UUID_PATTERN.test(cartToken)) {
       throw new OrderingError("Giỏ hàng không tồn tại.", 409, "cart_unavailable");
     }
 
@@ -196,7 +175,7 @@ export async function createIdempotentCustomerOrder(
         LIMIT 1
         FOR UPDATE
       `,
-      [requestedToken],
+      [cartToken],
     );
 
     if (cartResult.rowCount !== 1 || cartResult.rows[0].status !== "active") {
@@ -216,193 +195,44 @@ export async function createIdempotentCustomerOrder(
     const cartId = String(cartResult.rows[0].id);
     const itemResult = await client.query(
       `
-        SELECT
-          cart_item.product_variant_id,
-          cart_item.color_id,
-          cart_item.quantity,
-          variant.product_id AS variant_product_id,
-          variant.size_code,
-          variant.cup_code,
-          variant.is_active AS variant_active,
-          color.product_id AS color_product_id,
-          color.code AS color_code,
-          color.name AS color_name,
-          color.is_active AS color_active,
-          product.model_code,
-          product.name AS product_name,
-          product.currency,
-          product.is_active AS product_active,
-          COALESCE(variant.price_override, product.base_price) AS current_unit_price
-        FROM japan_underwear.cart_items AS cart_item
-        JOIN japan_underwear.product_variants AS variant
-          ON variant.id = cart_item.product_variant_id
-        JOIN japan_underwear.product_colors AS color
-          ON color.id = cart_item.color_id
-        JOIN japan_underwear.products AS product
-          ON product.id = variant.product_id
-        WHERE cart_item.cart_id = $1::uuid
-        ORDER BY cart_item.created_at, cart_item.id
-        FOR UPDATE OF cart_item
+        SELECT product_variant_id, color_id, quantity
+        FROM japan_underwear.cart_items
+        WHERE cart_id = $1::uuid
+        ORDER BY created_at, id
+        FOR UPDATE
       `,
       [cartId],
     );
-
     if (itemResult.rowCount === 0) {
       throw new OrderingError("Giỏ hàng đang trống.", 409, "empty_cart");
     }
 
-    for (const row of itemResult.rows) {
-      if (String(row.variant_product_id) !== String(row.color_product_id)) {
-        throw new OrderingError(
-          `Dòng ${row.model_code} có màu và size/cup khác sản phẩm.`,
-          409,
-          "selection_product_mismatch",
-        );
-      }
-      if (!row.variant_active || !row.color_active || !row.product_active) {
-        throw new OrderingError(
-          `Sản phẩm ${row.model_code} có lựa chọn đã ngừng bán.`,
-          409,
-          "selection_inactive",
-        );
-      }
-    }
+    const selections: OrderSelectionInput[] = itemResult.rows.map((row) => ({
+      productVariantId: String(row.product_variant_id),
+      colorId: String(row.color_id),
+      quantity: Number(row.quantity),
+    }));
 
-    const currencies = new Set(itemResult.rows.map((row) => String(row.currency)));
-    if (currencies.size !== 1) {
-      throw new OrderingError(
-        "Đơn hàng phải dùng đúng một loại tiền tệ.",
-        409,
-        "mixed_currency",
-      );
-    }
-
-    const currency = String(itemResult.rows[0].currency);
-    const subtotal = itemResult.rows.reduce(
-      (sum, row) => sum + Number(row.current_unit_price) * Number(row.quantity),
-      0,
-    );
-    const itemCount = itemResult.rows.reduce(
-      (sum, row) => sum + Number(row.quantity),
-      0,
-    );
-    const orderCode = makeOrderCode();
-
-    const orderResult = await client.query(
-      `
-        INSERT INTO japan_underwear.orders (
-          order_code,
-          source_cart_id,
-          status,
-          customer_store_name,
-          customer_name,
-          customer_phone,
-          delivery_address,
-          note,
-          delivery_latitude,
-          delivery_longitude,
-          delivery_accuracy_meters,
-          location_collected_at,
-          location_source,
-          subtotal,
-          currency,
-          customer_user_id,
-          client_request_id
-        ) VALUES (
-          $1, $2::uuid, 'submitted', $3, $4, $5, $6, $7,
-          $8, $9, $10, $11::timestamptz, $12, $13, $14, $15::uuid, $16::uuid
-        )
-        RETURNING id, created_at
-      `,
-      [
-        orderCode,
-        cartId,
-        profile.store_name,
-        profile.contact_name,
-        profile.phone,
-        profile.delivery_address,
-        note,
-        location?.latitude ?? null,
-        location?.longitude ?? null,
-        location?.accuracyMeters ?? null,
-        location?.collectedAt ?? null,
-        location?.source ?? null,
-        subtotal,
-        currency,
-        normalizedCustomerUserId,
-        normalizedClientRequestId,
-      ],
-    );
-    const orderId = String(orderResult.rows[0].id);
-    const createdAt = new Date(orderResult.rows[0].created_at).toISOString();
-
-    for (const row of itemResult.rows) {
-      const quantity = Number(row.quantity);
-      const unitPrice = Number(row.current_unit_price);
-      await client.query(
-        `
-          INSERT INTO japan_underwear.order_items (
-            order_id,
-            product_variant_id,
-            color_id,
-            quantity,
-            unit_price,
-            line_total,
-            product_code_snapshot,
-            product_name_snapshot,
-            color_code_snapshot,
-            color_name_snapshot,
-            size_code_snapshot,
-            cup_code_snapshot
-          ) VALUES (
-            $1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
-            $7, $8, $9, $10, $11, $12
-          )
-        `,
-        [
-          orderId,
-          row.product_variant_id,
-          row.color_id,
-          quantity,
-          unitPrice,
-          unitPrice * quantity,
-          String(row.model_code),
-          String(row.product_name),
-          String(row.color_code),
-          String(row.color_name),
-          String(row.size_code),
-          row.cup_code ? String(row.cup_code) : null,
-        ],
-      );
-    }
-
-    const outboxPayload = {
-      orderId,
-      orderCode,
+    const order = await createOrderFromSelections(client, {
+      source: "customer_checkout",
+      sourceCartId: cartId,
       customerUserId: normalizedCustomerUserId,
       clientRequestId: normalizedClientRequestId,
-      subtotal,
-      currency,
-      itemCount,
-      createdAt,
-    };
-
-    await client.query(
-      `
-        INSERT INTO japan_underwear.outbox_events (
-          aggregate_type,
-          aggregate_id,
-          event_type,
-          payload
-        ) VALUES (
-          'order',
-          $1::uuid,
-          'order.submitted',
-          $2::jsonb
-        )
-      `,
-      [orderId, JSON.stringify(outboxPayload)],
-    );
+      manualRequestId: null,
+      createdByUserId: null,
+      customer: {
+        storeName: profile.store_name,
+        name: profile.contact_name,
+        phone: profile.phone,
+        deliveryAddress: profile.delivery_address,
+        note: input.note,
+        location,
+      },
+      selections,
+      actorSource: "checkout",
+      actorLabel: "customer-checkout",
+      auditIdempotencyKey: `checkout:${cartId}`,
+    });
 
     const converted = await client.query(
       `
@@ -422,16 +252,6 @@ export async function createIdempotentCustomerOrder(
       );
     }
 
-    return {
-      id: orderId,
-      orderCode,
-      status: "submitted",
-      subtotal,
-      currency,
-      itemCount,
-      locationCaptured: Boolean(location),
-      idempotentReplay: false,
-      createdAt,
-    };
+    return order;
   });
 }
