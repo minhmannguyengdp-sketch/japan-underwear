@@ -77,8 +77,8 @@ export default async function AdminPage() {
                 Quản lý đơn hàng
               </h1>
               <p className="mt-3 max-w-2xl leading-7 text-slate-600">
-                Xem đơn, kiểm tra snapshot và chuyển đơn chờ xử lý sang xác nhận
-                hoặc hủy. Mọi thao tác được kiểm tra quyền ở server và ghi audit.
+                Xem đơn, kiểm tra snapshot và chuyển đơn theo lifecycle. Mọi thao tác
+                được kiểm tra quyền ở server và ghi audit.
               </p>
             </div>
             <div className="flex flex-col items-start gap-3 sm:items-end">
@@ -88,6 +88,12 @@ export default async function AdminPage() {
                   className="rounded-xl bg-tt-purple-700 px-4 py-2.5 text-sm font-black text-white"
                 >
                   Đơn hàng
+                </Link>
+                <Link
+                  href="/admin/tao-don"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black hover:bg-slate-50"
+                >
+                  Tạo đơn tay
                 </Link>
                 <Link
                   href="/admin/khach-hang"
