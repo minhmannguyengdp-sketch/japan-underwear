@@ -9,6 +9,15 @@ const cwd = process.cwd();
 loadEnv({ path: path.resolve(cwd, ".env.local"), override: true, quiet: true });
 loadEnv({ path: path.resolve(cwd, ".env"), override: false, quiet: true });
 
+const ORDER_STATUSES = [
+  "submitted",
+  "confirmed",
+  "processing",
+  "completed",
+  "cancelled",
+];
+const TRANSITION_ACTIONS = ["confirmed", "processing", "completed", "cancelled"];
+
 const [firstArgument, secondArgument, ...remainingArguments] = process.argv.slice(2);
 const listMode = String(firstArgument ?? "").trim().toLowerCase() === "list";
 const orderCode = listMode ? "" : String(firstArgument ?? "").trim();
@@ -35,22 +44,26 @@ const listLimit = Number.parseInt(readOption("limit") ?? "20", 10);
 
 function printUsage() {
   console.error(`Usage:
-  npm run order:status -- list [--status=submitted|confirmed|cancelled|all] [--limit=20]
+  npm run order:status -- list [--status=submitted|confirmed|processing|completed|cancelled|all] [--limit=20]
   npm run order:status -- <ORDER_CODE> history
   npm run order:status -- <ORDER_CODE> confirmed --actor=<name> [--reason=<text>] [--key=<key>] [--apply]
+  npm run order:status -- <ORDER_CODE> processing --actor=<name> [--reason=<text>] [--key=<key>] [--apply]
+  npm run order:status -- <ORDER_CODE> completed --actor=<name> [--reason=<text>] [--key=<key>] [--apply]
   npm run order:status -- <ORDER_CODE> cancelled --actor=<name> --reason=<text> [--key=<key>] [--apply]`);
 }
 
 if (listMode) {
-  if (!["submitted", "confirmed", "cancelled", "all"].includes(listStatus)) {
-    console.error("--status phải là submitted, confirmed, cancelled hoặc all.");
+  if (![...ORDER_STATUSES, "all"].includes(listStatus)) {
+    console.error(
+      "--status phải là submitted, confirmed, processing, completed, cancelled hoặc all.",
+    );
     process.exit(1);
   }
   if (!Number.isInteger(listLimit) || listLimit < 1 || listLimit > 100) {
     console.error("--limit phải là số nguyên từ 1 đến 100.");
     process.exit(1);
   }
-} else if (!orderCode || !["history", "confirmed", "cancelled"].includes(action)) {
+} else if (!orderCode || !["history", ...TRANSITION_ACTIONS].includes(action)) {
   printUsage();
   process.exit(1);
 }
