@@ -64,7 +64,6 @@ const client = new Client({
 async function assertRequiredState() {
   const relations = await client.query(`
     SELECT
-      to_regclass('japan_underwear.carts') AS carts,
       to_regclass('japan_underwear.orders') AS orders,
       to_regclass('japan_underwear.users') AS users,
       to_regclass('drizzle.__drizzle_migrations') AS migration_journal
@@ -89,65 +88,49 @@ async function assertRequiredState() {
 
 async function verifyAppliedState() {
   const columnResult = await client.query(`
-    SELECT table_name, data_type, is_nullable
+    SELECT data_type, is_nullable
     FROM information_schema.columns
     WHERE table_schema = 'japan_underwear'
-      AND table_name = ANY(ARRAY['carts', 'orders']::text[])
+      AND table_name = 'orders'
       AND column_name = 'customer_user_id'
-    ORDER BY table_name
   `);
-  if (columnResult.rowCount !== 2) {
-    throw new Error("Hậu kiểm 0008 thiếu customer_user_id trên carts hoặc orders.");
+  if (columnResult.rowCount !== 1 || columnResult.rows[0].data_type !== "uuid") {
+    throw new Error("Hậu kiểm 0008 thiếu orders.customer_user_id kiểu uuid.");
   }
-  for (const row of columnResult.rows) {
-    if (row.data_type !== "uuid" || row.is_nullable !== "YES") {
-      throw new Error(`${row.table_name}.customer_user_id phải là uuid nullable.`);
-    }
+  if (columnResult.rows[0].is_nullable !== "YES") {
+    throw new Error("orders.customer_user_id phải nullable để giữ đơn legacy/staff không có customer owner.");
   }
 
   const constraintResult = await client.query(`
-    SELECT conname
+    SELECT count(*)::integer AS count
     FROM pg_constraint
-    WHERE conname = ANY(ARRAY[
-      'carts_customer_user_id_users_id_fk',
-      'orders_customer_user_id_users_id_fk'
-    ]::text[])
+    WHERE conrelid = 'japan_underwear.orders'::regclass
+      AND conname = 'orders_customer_user_id_users_id_fk'
       AND contype = 'f'
   `);
-  const constraints = new Set(constraintResult.rows.map((row) => String(row.conname)));
-  for (const name of [
-    "carts_customer_user_id_users_id_fk",
-    "orders_customer_user_id_users_id_fk",
-  ]) {
-    if (!constraints.has(name)) throw new Error(`Hậu kiểm 0008 thiếu foreign key ${name}.`);
+  if (Number(constraintResult.rows[0]?.count ?? 0) !== 1) {
+    throw new Error("Hậu kiểm 0008 thiếu foreign key customer owner.");
   }
 
   const indexResult = await client.query(`
-    SELECT indexname
+    SELECT count(*)::integer AS count
     FROM pg_indexes
     WHERE schemaname = 'japan_underwear'
-      AND indexname = ANY(ARRAY[
-        'carts_customer_user_status_idx',
-        'orders_customer_user_created_idx'
-      ]::text[])
+      AND indexname = 'orders_customer_user_created_idx'
   `);
-  const indexes = new Set(indexResult.rows.map((row) => String(row.indexname)));
-  for (const name of ["carts_customer_user_status_idx", "orders_customer_user_created_idx"]) {
-    if (!indexes.has(name)) throw new Error(`Hậu kiểm 0008 thiếu index ${name}.`);
+  if (Number(indexResult.rows[0]?.count ?? 0) !== 1) {
+    throw new Error("Hậu kiểm 0008 thiếu index lịch sử đơn theo customer.");
   }
 
   const triggerResult = await client.query(`
-    SELECT trigger_name
+    SELECT count(DISTINCT trigger_name)::integer AS count
     FROM information_schema.triggers
     WHERE trigger_schema = 'japan_underwear'
-      AND trigger_name = ANY(ARRAY[
-        'carts_customer_owner_guard_trg',
-        'orders_customer_owner_guard_trg'
-      ]::text[])
+      AND event_object_table = 'orders'
+      AND trigger_name = 'orders_customer_owner_guard_trg'
   `);
-  const triggers = new Set(triggerResult.rows.map((row) => String(row.trigger_name)));
-  for (const name of ["carts_customer_owner_guard_trg", "orders_customer_owner_guard_trg"]) {
-    if (!triggers.has(name)) throw new Error(`Hậu kiểm 0008 thiếu trigger ${name}.`);
+  if (Number(triggerResult.rows[0]?.count ?? 0) !== 1) {
+    throw new Error("Hậu kiểm 0008 thiếu trigger khóa owner đơn hàng.");
   }
 }
 
@@ -186,8 +169,8 @@ async function main() {
     await reconcileJournal(migrationHash);
     await client.query("COMMIT");
     console.log("Customer order ownership migration OK.");
-    console.log("Authenticated checkout binds cart owner and order inherits the same internal UUID.");
-    console.log("Legacy/staff orders may remain unowned; assigned cart/order owners are immutable.");
+    console.log("Authenticated checkout writes the internal user UUID in the order transaction.");
+    console.log("Legacy/staff orders may remain unowned; assigned order owners are immutable.");
     console.log("Migration record 0008 reconciled.");
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
