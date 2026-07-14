@@ -1,75 +1,100 @@
-# Hoàn tất màu cho các mã đã có size/cup
+# Hoàn tất màu cho catalog có size/cup
 
 ## Mục tiêu
 
-Catalog hiện đã có 199 lựa chọn size/cup được duyệt trên 32 mã. Chỉ 2 mã trong số đó đã có màu, nên còn đúng 30 mã chưa thể đặt hàng.
+Giữ nguyên bộ size/cup đã duyệt và chỉ bổ sung màu có bằng chứng thật.
 
-Luồng này bổ sung màu cho 30 mã còn thiếu mà không chạy lại, không xóa và không cập nhật bảng size/cup.
+Baseline đã duyệt:
 
-## Nguyên tắc bắt buộc
+- 32 mã có size/cup;
+- 199 dòng size/cup;
+- 2 mã đã có cả màu và size/cup;
+- 30 mã còn thiếu màu.
 
-- Giữ nguyên 199 size/cup đã duyệt.
-- Chỉ nhận màu nhìn thấy hoặc được ghi rõ trên trang sản phẩm thật của `tuanthuy.com.vn`.
-- Mỗi màu phải có URL và loại bằng chứng đi kèm.
-- Không đoán màu từ tên file ảnh.
-- Không tạo phép nhân màu × size × cup.
-- File audit và file duyệt nằm trong `data/local/`, không đưa dữ liệu tạm lên GitHub.
-- Chỉ ghi vào schema PostgreSQL `japan_underwear`.
+Không tạo màu giả, không nhân màu × size × cup, không sửa dữ liệu đơn cũ.
 
-## Bước 1: lấy màu từ website gốc
+## Lỗi bảng mã đã phát hiện
 
-Mở `tuanthuy.com.vn` bằng Chrome hoặc Edge. Nhấn F12, chọn **Console**, dán toàn bộ nội dung file:
+Windows PowerShell 5.1 có thể đọc file JavaScript UTF-8 không BOM bằng bảng mã cũ nếu bỏ qua `-Encoding UTF8`. Khi đó ký tự `đ/Đ` trong bộ nhận màu bị hỏng và các màu như `Đen`, `Đỏ`, `Đỏ đô`, `Xanh đen`, `Da đậm` bị bỏ sót.
 
-`scripts/browser-audit-product-colors.js`
+Mọi lệnh chép script sang clipboard phải ghi rõ `-Encoding UTF8`.
 
-Script chỉ đọc dữ liệu công khai trên website và tải xuống file:
+## Bước 1: quét màu công khai trên toàn website
+
+```powershell
+cd F:\1_A_Disk_D\TT\japan-underwear
+
+git pull --ff-only origin feat/catalog-price-management
+Get-Content ".\scripts\browser-audit-product-colors.js" -Raw -Encoding UTF8 | Set-Clipboard
+```
+
+Mở `https://tuanthuy.com.vn`, nhấn F12, chọn Console, dán và chạy. Trình duyệt tải file:
 
 `tuan-thuy-color-audit-YYYY-MM-DD.json`
 
-Chép file vừa tải vào `data/local/`.
+File quét ngày 2026-07-14 cho thấy:
 
-## Bước 2: tạo danh sách 30 mã cần duyệt
+- 104 trang sản phẩm;
+- 24 trang danh mục;
+- 0 lỗi;
+- 0 trang sai identity;
+- 44 màu được nhận ban đầu;
+- 28 màu tên có `đ/Đ` bị bỏ sót do bảng mã clipboard;
+- sau khi sửa từ chính tên trang: 72 màu công khai.
 
-Dùng file approval cũ đã chứa đúng 199 size/cup và file màu mới:
+Các màu công khai này không nằm trên 30 mã đang có size/cup nhưng thiếu màu, nên không đủ để mở thêm mã đặt hàng.
+
+## Bước 2: lấy gallery của đúng 30 mã còn thiếu màu
+
+Dùng script ASCII-safe, không phụ thuộc bảng mã PowerShell:
+
+```powershell
+cd F:\1_A_Disk_D\TT\japan-underwear
+
+git pull --ff-only origin feat/catalog-price-management
+Get-Content ".\scripts\browser-audit-missing-color-galleries.js" -Raw -Encoding UTF8 | Set-Clipboard
+```
+
+Mở `https://tuanthuy.com.vn`, nhấn F12, chọn Console, dán và chạy. Script chỉ đọc đúng 30 trang cần xử lý và tải file:
+
+`tuan-thuy-missing-color-galleries-YYYY-MM-DD.json`
+
+File chứa URL trang nguồn và URL ảnh gallery để review bằng hình ảnh. Không suy màu từ tên file.
+
+## Bước 3: tạo danh sách review màu
+
+Sau khi có file audit màu đã được review thành màu có bằng chứng thật:
 
 ```powershell
 cd F:\1_A_Disk_D\TT\japan-underwear
 
 npm run catalog:web:color:review -- `
-  ".\data\local\tuan-thuy-product-audit-2026-07-12.consolidated.review-plan.approved.json" `
+  ".\data\local\tuan-thuy-order-data.approved.json" `
   ".\data\local\tuan-thuy-color-audit-YYYY-MM-DD.json"
 ```
 
-Kết quả phải báo:
+Review phải còn đúng:
 
-- 32 mã và 199 size/cup được giữ nguyên;
-- 30 mã đang thiếu màu;
-- không còn mã màu chưa xác định trước khi duyệt.
+- 32 mã có size/cup;
+- 199 size/cup;
+- 30 mã mục tiêu thiếu màu;
+- không có mã unresolved trước khi duyệt.
 
-Nếu còn `Unresolved products`, dừng lại và mở trực tiếp các URL trong file review để đối chiếu. Không được tự điền đại.
-
-## Bước 3: duyệt màu
-
-Chỉ chạy khi đủ màu thật cho cả 30 mã:
+## Bước 4: duyệt màu
 
 ```powershell
 cd F:\1_A_Disk_D\TT\japan-underwear
 
 npm run catalog:web:color:approve -- `
   ".\data\local\tuan-thuy-color-audit-YYYY-MM-DD.review.json" `
-  --approve
+  --approve-all-reviewed
 ```
 
-Lệnh duyệt sẽ từ chối nếu:
+Chương trình không cho duyệt khi còn mã chưa có màu hoặc thiếu URL/bằng chứng.
 
-- thiếu một trong 30 mã;
-- màu không có URL bằng chứng;
-- mã màu bị trùng;
-- file không còn liên kết với đúng 199 size/cup cũ.
+## Bước 5: xem trước và nhập chỉ màu
 
-## Bước 4: xem trước rồi nhập chỉ màu
-
-Chạy thử trước, chưa ghi dữ liệu:
+Xem trước:
 
 ```powershell
 cd F:\1_A_Disk_D\TT\japan-underwear
@@ -92,12 +117,12 @@ Importer này:
 
 - chỉ thêm hoặc cập nhật `japan_underwear.product_colors`;
 - không có câu lệnh cập nhật `product_variants`;
-- kiểm tra cả 30 mã vẫn còn size/cup active;
+- đối chiếu chính xác toàn bộ 199 size/cup trước và sau giao dịch;
 - lưu hash file nguồn vào `catalog_import_runs`;
 - dừng nếu dữ liệu hiện tại khác với file đã duyệt;
 - hậu kiểm cả 30 mã đã đủ điều kiện đặt hàng.
 
-## Bước 5: kiểm tra toàn bộ hệ thống
+## Bước 6: kiểm tra toàn bộ hệ thống
 
 ```powershell
 cd F:\1_A_Disk_D\TT\japan-underwear
@@ -112,8 +137,7 @@ Mở `http://localhost:3100` và kiểm tra:
 
 - tổng số model vẫn là 108;
 - 199 size/cup không đổi;
-- 30 mã vừa bổ sung màu chuyển từ “Chờ dữ liệu” sang “Đặt hàng”;
-- tổng số mã đặt được tăng từ 2 lên 32;
+- mã có màu được duyệt chuyển từ “Chờ dữ liệu” sang “Đặt hàng”;
 - chọn màu + size/cup và thêm giỏ thành công;
 - đơn cũ không thay đổi.
 
