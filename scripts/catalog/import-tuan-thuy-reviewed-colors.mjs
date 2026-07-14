@@ -21,6 +21,25 @@ if (!inputArgument) {
 const inputPath = path.resolve(cwd, inputArgument);
 const raw = await fs.readFile(inputPath, "utf8");
 const approved = JSON.parse(raw);
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+const sourceApprovedPathValue = approved.sourceApprovedOrderData?.path;
+if (!sourceApprovedPathValue) {
+  throw new Error("Approved colors thiếu đường dẫn file size/cup gốc.");
+}
+const sourceApprovedPath = path.resolve(cwd, sourceApprovedPathValue);
+const sourceApprovedRaw = await fs.readFile(sourceApprovedPath, "utf8");
+if (sha256(sourceApprovedRaw) !== approved.sourceApprovedOrderData.sha256) {
+  throw new Error("File size/cup gốc đã thay đổi sau khi tạo color review.");
+}
+const sourceApproved = JSON.parse(sourceApprovedRaw);
+const approvedVariantPayload = sourceApproved.approvedVariantCandidates ?? [];
+if (sha256(JSON.stringify(approvedVariantPayload)) !== approved.approval?.preservesApprovedVariantPayloadSha256) {
+  throw new Error("Payload 199 size/cup không còn khớp hash đã duyệt.");
+}
 if (approved.schemaVersion !== 1) {
   throw new Error(`Approved colors schemaVersion phải là 1; nhận ${approved.schemaVersion}.`);
 }
@@ -38,6 +57,31 @@ function parseKey(key) {
   const [brand, category, modelCode] = String(key).split(":");
   if (!brand || !category || !modelCode) throw new Error(`Product key không hợp lệ: ${key}`);
   return { brand, category, modelCode };
+}
+
+const expectedVariantKeys = [];
+const expectedVariantProductKeys = new Set();
+for (const item of approvedVariantPayload) {
+  const key = String(item.key ?? "").trim();
+  parseKey(key);
+  expectedVariantProductKeys.add(key);
+  for (const variant of item.variants ?? []) {
+    const sizeCode = String(variant.sizeCode ?? "").trim();
+    const cupCode = String(variant.cupCode ?? "").trim().toUpperCase();
+    if (!/^\d{2,3}$/.test(sizeCode) || !/^[A-D]$/.test(cupCode)) {
+      throw new Error(`Size/cup gốc không hợp lệ: ${key} ${sizeCode}${cupCode}`);
+    }
+    expectedVariantKeys.push(`${key}:${sizeCode}:${cupCode}`);
+  }
+}
+expectedVariantKeys.sort();
+if (expectedVariantProductKeys.size !== 32 || expectedVariantKeys.length !== 199) {
+  throw new Error(
+    `File size/cup gốc lệch baseline: ${expectedVariantProductKeys.size}/32 product, ${expectedVariantKeys.length}/199 dòng.`,
+  );
+}
+if (new Set(expectedVariantKeys).size !== expectedVariantKeys.length) {
+  throw new Error("File size/cup gốc có dòng trùng.");
 }
 
 const productRows = [];
@@ -164,10 +208,14 @@ try {
       { id: String(row.id), hasActiveVariant: Boolean(row.has_active_variant) },
     ]),
   );
-  const missingProducts = productRows.filter((row) => !productByKey.has(row.key));
-  if (missingProducts.length) {
+  const requiredProductKeys = [...new Set([
+    ...productRows.map((row) => row.key),
+    ...expectedVariantProductKeys,
+  ])];
+  const missingProductKeys = requiredProductKeys.filter((key) => !productByKey.has(key));
+  if (missingProductKeys.length) {
     throw new Error(
-      `Approved colors có product không tồn tại/không active: ${missingProducts.map((row) => row.key).join(", ")}`,
+      `Dữ liệu duyệt có product không tồn tại/không active: ${missingProductKeys.join(", ")}`,
     );
   }
   const withoutVariants = productRows.filter(
@@ -180,6 +228,45 @@ try {
   }
 
   const productIds = productRows.map((row) => productByKey.get(row.key).id);
+  const approvedVariantProductIds = [...expectedVariantProductKeys].map(
+    (key) => productByKey.get(key).id,
+  );
+
+  async function readActiveVariantKeys() {
+    const result = await client.query(
+      `
+        SELECT
+          brand.slug AS brand,
+          category.slug AS category,
+          product.model_code,
+          variant.size_code,
+          COALESCE(variant.cup_code, '') AS cup_code
+        FROM japan_underwear.product_variants AS variant
+        JOIN japan_underwear.products AS product ON product.id = variant.product_id
+        JOIN japan_underwear.brands AS brand ON brand.id = product.brand_id
+        JOIN japan_underwear.categories AS category ON category.id = product.category_id
+        WHERE variant.product_id = ANY($1::uuid[])
+          AND variant.is_active = true
+        ORDER BY brand.slug, category.slug, product.model_code, variant.size_code, variant.cup_code
+      `,
+      [approvedVariantProductIds],
+    );
+    return result.rows
+      .map(
+        (row) =>
+          `${row.brand}:${row.category}:${row.model_code}:${row.size_code}:${row.cup_code}`,
+      )
+      .sort();
+  }
+
+  const activeVariantKeysBefore = await readActiveVariantKeys();
+  if (JSON.stringify(activeVariantKeysBefore) !== JSON.stringify(expectedVariantKeys)) {
+    throw new Error(
+      `PostgreSQL không còn đúng 199 size/cup đã duyệt: ${activeVariantKeysBefore.length}/199 dòng.`,
+    );
+  }
+  const variantSnapshotHashBefore = sha256(JSON.stringify(activeVariantKeysBefore));
+
   const existingColorsResult = await client.query(
     `
       SELECT product_id, code, name, sort_order, is_active
@@ -242,6 +329,7 @@ try {
         plannedColors: colorRows.length,
         preservedVariantPayloadSha256:
           approved.approval.preservesApprovedVariantPayloadSha256,
+        activeVariantSnapshotSha256: variantSnapshotHashBefore,
       }),
     ],
   );
@@ -319,6 +407,14 @@ try {
     ],
   );
   const checked = afterResult.rows[0];
+  const activeVariantKeysAfter = await readActiveVariantKeys();
+  const variantSnapshotHashAfter = sha256(JSON.stringify(activeVariantKeysAfter));
+  if (
+    JSON.stringify(activeVariantKeysAfter) !== JSON.stringify(expectedVariantKeys) ||
+    variantSnapshotHashAfter !== variantSnapshotHashBefore
+  ) {
+    throw new Error("199 size/cup thay đổi trong lúc nhập màu; transaction màu đã bị hủy.");
+  }
   if (Number(checked.approved_colors) !== colorRows.length) {
     throw new Error(
       `Hậu kiểm màu thất bại: ${checked.approved_colors}/${colorRows.length}.`,
@@ -350,6 +446,8 @@ try {
         orderableTargetsAfter: productRows.length,
         preservedVariantPayloadSha256:
           approved.approval.preservesApprovedVariantPayloadSha256,
+        activeVariantSnapshotSha256Before: variantSnapshotHashBefore,
+        activeVariantSnapshotSha256After: variantSnapshotHashAfter,
       }),
     ],
   );
