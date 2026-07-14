@@ -42,6 +42,7 @@ const EXPECTED_MIGRATIONS = [
   1783880000000,
   1783885000000,
   1783890000000,
+  1783895000000,
 ];
 
 const REQUIRED_INDEXES = [
@@ -50,6 +51,8 @@ const REQUIRED_INDEXES = [
   "order_items_order_variant_color_uidx",
   "orders_order_code_uidx",
   "orders_source_cart_uidx",
+  "orders_staff_manual_request_uidx",
+  "orders_source_created_idx",
   "product_variants_product_size_cup_uidx",
   "product_variants_product_size_no_cup_uidx",
 ];
@@ -60,6 +63,15 @@ const REQUIRED_ORDER_LOCATION_COLUMNS = [
   "delivery_accuracy_meters",
   "location_collected_at",
   "location_source",
+];
+
+const REQUIRED_ORDER_CREATION_COLUMNS = [
+  "order_source",
+  "source_cart_id",
+  "customer_user_id",
+  "client_request_id",
+  "manual_request_id",
+  "created_by_user_id",
 ];
 
 const connectionString = process.env.DATABASE_URL?.trim();
@@ -225,17 +237,21 @@ async function main() {
       WHERE trigger_schema = 'japan_underwear'
         AND trigger_name IN (
           'cart_items_selection_same_product_trg',
-          'order_items_selection_same_product_trg'
+          'order_items_selection_same_product_trg',
+          'orders_creation_source_derive_trg'
         )
     `);
     const triggers = new Set(
       triggerResult.rows.map((row) => `${row.event_object_table}:${row.trigger_name}`),
     );
-    if (!triggers.has("cart_items:cart_items_selection_same_product_trg")) {
-      throw new Error("Missing cart_items selection identity trigger.");
-    }
-    if (!triggers.has("order_items:order_items_selection_same_product_trg")) {
-      throw new Error("Missing order_items selection identity trigger.");
+    for (const key of [
+      "cart_items:cart_items_selection_same_product_trg",
+      "order_items:order_items_selection_same_product_trg",
+      "orders:orders_creation_source_derive_trg",
+    ]) {
+      if (!triggers.has(key)) {
+        throw new Error(`Missing required trigger: ${key}.`);
+      }
     }
 
     const lineColumnResult = await client.query(`
@@ -285,6 +301,30 @@ async function main() {
       }
     }
 
+    const creationColumnResult = await client.query(
+      `
+        SELECT column_name, is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = 'japan_underwear'
+          AND table_name = 'orders'
+          AND column_name = ANY($1::text[])
+      `,
+      [REQUIRED_ORDER_CREATION_COLUMNS],
+    );
+    const creationColumns = new Map(
+      creationColumnResult.rows.map((row) => [String(row.column_name), String(row.is_nullable)]),
+    );
+    if (creationColumns.get("order_source") !== "NO") {
+      throw new Error("orders.order_source must exist and be NOT NULL.");
+    }
+    for (const columnName of REQUIRED_ORDER_CREATION_COLUMNS.filter(
+      (name) => name !== "order_source",
+    )) {
+      if (creationColumns.get(columnName) !== "YES") {
+        throw new Error(`orders.${columnName} must exist and be nullable.`);
+      }
+    }
+
     const migrationTableResult = await client.query(
       "SELECT to_regclass('drizzle.__drizzle_migrations') AS table_name",
     );
@@ -312,6 +352,7 @@ async function main() {
     console.log("Variant identity: product + size + cup; color selected separately per order line.");
     console.log("Server cart identity: cart + product_variant_id + color_id.");
     console.log("Order item identity: order + product_variant_id + color_id; quantity stored on the row.");
+    console.log("Order creation identity: legacy cart | customer checkout | staff manual.");
     console.log("Order lifecycle audit table: japan_underwear.order_status_events.");
     console.log("Order delivery location: optional all-or-none snapshot on orders.");
     console.log("Auth identity: internal UUID + external account mapping + database sessions.");
