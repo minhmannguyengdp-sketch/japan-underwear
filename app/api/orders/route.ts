@@ -3,7 +3,6 @@ import { z } from "zod";
 
 import { requireAuthenticatedUser } from "@/lib/authz";
 import { clearCartCookie, readCartToken } from "@/lib/cart-http";
-import { bindCustomerCartOwner } from "@/lib/customer-cart-ownership";
 import { customerOrderApiErrorResponse } from "@/lib/customer-order-http";
 import { listCustomerOrders } from "@/lib/customer-orders";
 import { createServerOrder } from "@/lib/server-ordering";
@@ -80,9 +79,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const cartToken = readCartToken(request);
-    await bindCustomerCartOwner(cartToken, context.userId);
-    const order = await createServerOrder(cartToken, parsed.data);
+    const order = await createServerOrder(
+      readCartToken(request),
+      context.userId,
+      parsed.data,
+    );
     return clearCartCookie(NextResponse.json({ order }, { status: 201 }));
   } catch (error) {
     return customerOrderApiErrorResponse(error);
