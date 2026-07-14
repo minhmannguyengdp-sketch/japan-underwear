@@ -40,7 +40,9 @@ async function expectConstraintFailure(label, work) {
     rejected = error?.code === "23514";
     await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
   }
-  if (!rejected) throw new Error(`${label} was not rejected by a database constraint trigger.`);
+  if (!rejected) {
+    throw new Error(`${label} was not rejected by the database owner guard.`);
+  }
 }
 
 async function verifyRuntimeOwnership() {
@@ -59,25 +61,15 @@ async function verifyRuntimeOwnership() {
     );
     const [userA, userB] = userResult.rows;
 
-    const cartResult = await client.query(
-      `
-        INSERT INTO japan_underwear.carts (token, status, customer_user_id)
-        VALUES
-          (gen_random_uuid(), 'converted', $1::uuid),
-          (gen_random_uuid(), 'converted', $2::uuid),
-          (gen_random_uuid(), 'converted', NULL)
-        RETURNING id
-      `,
-      [userA.id, userB.id],
-    );
+    const cartResult = await client.query(`
+      INSERT INTO japan_underwear.carts (token, status)
+      VALUES
+        (gen_random_uuid(), 'converted'),
+        (gen_random_uuid(), 'converted'),
+        (gen_random_uuid(), 'converted')
+      RETURNING id
+    `);
     const [cartA, cartB, cartLegacy] = cartResult.rows;
-
-    await expectConstraintFailure("cart owner reassignment", () =>
-      client.query(
-        "UPDATE japan_underwear.carts SET customer_user_id = $2::uuid WHERE id = $1::uuid",
-        [cartA.id, userB.id],
-      ),
-    );
 
     const codeA = `TT-20990101-${randomUUID().slice(0, 8).toUpperCase()}`;
     const codeB = `TT-20990101-${randomUUID().slice(0, 8).toUpperCase()}`;
@@ -86,36 +78,15 @@ async function verifyRuntimeOwnership() {
     await client.query(
       `
         INSERT INTO japan_underwear.orders (
-          order_code, source_cart_id, status,
+          order_code, source_cart_id, status, customer_user_id,
           customer_name, customer_phone, subtotal, currency
         ) VALUES
-          ($1, $2::uuid, 'submitted', 'Customer A', '0900000001', 1000, 'VND'),
-          ($3, $4::uuid, 'submitted', 'Customer B', '0900000002', 2000, 'VND'),
-          ($5, $6::uuid, 'submitted', 'Legacy Customer', '0900000003', 3000, 'VND')
+          ($1, $2::uuid, 'submitted', $3::uuid, 'Customer A', '0900000001', 1000, 'VND'),
+          ($4, $5::uuid, 'submitted', $6::uuid, 'Customer B', '0900000002', 2000, 'VND'),
+          ($7, $8::uuid, 'submitted', NULL, 'Legacy Customer', '0900000003', 3000, 'VND')
       `,
-      [codeA, cartA.id, codeB, cartB.id, codeLegacy, cartLegacy.id],
+      [codeA, cartA.id, userA.id, codeB, cartB.id, userB.id, codeLegacy, cartLegacy.id],
     );
-
-    const inheritedOwners = await client.query(
-      `
-        SELECT order_code, customer_user_id
-        FROM japan_underwear.orders
-        WHERE order_code = ANY($1::text[])
-      `,
-      [[codeA, codeB, codeLegacy]],
-    );
-    const ownerByCode = new Map(
-      inheritedOwners.rows.map((row) => [String(row.order_code), row.customer_user_id]),
-    );
-    if (String(ownerByCode.get(codeA)) !== String(userA.id)) {
-      throw new Error("Order A did not inherit customer owner from its source cart.");
-    }
-    if (String(ownerByCode.get(codeB)) !== String(userB.id)) {
-      throw new Error("Order B did not inherit customer owner from its source cart.");
-    }
-    if (ownerByCode.get(codeLegacy) !== null) {
-      throw new Error("Legacy/staff cart without owner unexpectedly assigned an order owner.");
-    }
 
     const scopedA = await client.query(
       `
@@ -147,6 +118,7 @@ async function verifyRuntimeOwnership() {
       "UPDATE japan_underwear.orders SET customer_user_id = $2::uuid WHERE order_code = $1",
       [codeLegacy, userA.id],
     );
+
     await expectConstraintFailure("order owner reassignment", () =>
       client.query(
         "UPDATE japan_underwear.orders SET customer_user_id = $2::uuid WHERE order_code = $1",
@@ -174,52 +146,44 @@ async function main() {
   try {
     const schemaResult = await client.query(`
       SELECT
-        (SELECT count(*)::integer
-         FROM information_schema.columns
-         WHERE table_schema = 'japan_underwear'
-           AND table_name = ANY(ARRAY['carts', 'orders']::text[])
-           AND column_name = 'customer_user_id'
-           AND data_type = 'uuid') AS owner_columns,
-        (SELECT count(*)::integer
-         FROM pg_indexes
-         WHERE schemaname = 'japan_underwear'
-           AND indexname = ANY(ARRAY[
-             'carts_customer_user_status_idx',
-             'orders_customer_user_created_idx'
-           ]::text[])) AS owner_indexes,
-        (SELECT count(DISTINCT trigger_name)::integer
-         FROM information_schema.triggers
-         WHERE trigger_schema = 'japan_underwear'
-           AND trigger_name = ANY(ARRAY[
-             'carts_customer_owner_guard_trg',
-             'orders_customer_owner_guard_trg'
-           ]::text[])) AS owner_guards
+        EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'japan_underwear'
+            AND table_name = 'orders'
+            AND column_name = 'customer_user_id'
+            AND data_type = 'uuid'
+            AND is_nullable = 'YES'
+        ) AS has_owner_column,
+        EXISTS (
+          SELECT 1
+          FROM pg_indexes
+          WHERE schemaname = 'japan_underwear'
+            AND indexname = 'orders_customer_user_created_idx'
+        ) AS has_owner_index,
+        EXISTS (
+          SELECT 1
+          FROM information_schema.triggers
+          WHERE trigger_schema = 'japan_underwear'
+            AND event_object_table = 'orders'
+            AND trigger_name = 'orders_customer_owner_guard_trg'
+        ) AS has_owner_guard
     `);
     const state = schemaResult.rows[0];
-    if (
-      Number(state.owner_columns) !== 2 ||
-      Number(state.owner_indexes) !== 2 ||
-      Number(state.owner_guards) !== 2
-    ) {
-      throw new Error("Customer cart/order ownership schema is incomplete.");
+    if (!state.has_owner_column || !state.has_owner_index || !state.has_owner_guard) {
+      throw new Error("Customer order ownership schema is incomplete.");
     }
 
     const orphanResult = await client.query(`
-      SELECT
-        (SELECT count(*)::integer
-         FROM japan_underwear.carts AS cart
-         LEFT JOIN japan_underwear.users AS auth_user ON auth_user.id = cart.customer_user_id
-         WHERE cart.customer_user_id IS NOT NULL AND auth_user.id IS NULL) AS orphan_carts,
-        (SELECT count(*)::integer
-         FROM japan_underwear.orders AS orders
-         LEFT JOIN japan_underwear.users AS auth_user ON auth_user.id = orders.customer_user_id
-         WHERE orders.customer_user_id IS NOT NULL AND auth_user.id IS NULL) AS orphan_orders
+      SELECT count(*)::integer AS count
+      FROM japan_underwear.orders AS orders
+      LEFT JOIN japan_underwear.users AS auth_user
+        ON auth_user.id = orders.customer_user_id
+      WHERE orders.customer_user_id IS NOT NULL
+        AND auth_user.id IS NULL
     `);
-    if (
-      Number(orphanResult.rows[0]?.orphan_carts ?? 0) !== 0 ||
-      Number(orphanResult.rows[0]?.orphan_orders ?? 0) !== 0
-    ) {
-      throw new Error("Carts or orders contain orphan customer owners.");
+    if (Number(orphanResult.rows[0]?.count ?? 0) !== 0) {
+      throw new Error("Orders contain orphan customer owners.");
     }
 
     const migrationResult = await client.query(
@@ -242,9 +206,9 @@ async function main() {
     const counts = countsResult.rows[0];
 
     console.log("Customer order ownership verification OK.");
-    console.log("Cart binding: immutable internal user UUID.");
-    console.log("Order owner: inherited from source cart in the order insert transaction.");
+    console.log("Order owner: internal user UUID written in the checkout transaction.");
     console.log("Customer lookup scope: internal user UUID + order code; cross-customer lookup hidden.");
+    console.log("Owner reassignment: rejected by database trigger.");
     console.log("Runtime fixtures: executed inside a transaction and rolled back.");
     console.log(
       `Orders: ${counts.orders}; owned: ${counts.owned_orders}; legacy/staff unowned: ${counts.legacy_or_staff_orders}.`,
