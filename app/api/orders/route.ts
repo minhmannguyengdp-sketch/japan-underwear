@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import {
-  clearCartCookie,
-  orderingErrorResponse,
-  readCartToken,
-} from "@/lib/cart-http";
+import { requireAuthenticatedUser } from "@/lib/authz";
+import { clearCartCookie, readCartToken } from "@/lib/cart-http";
+import { customerOrderApiErrorResponse } from "@/lib/customer-order-http";
+import { listCustomerOrders } from "@/lib/customer-orders";
 import { createServerOrder } from "@/lib/server-ordering";
 
 export const dynamic = "force-dynamic";
@@ -53,8 +52,19 @@ const checkoutSchema = z.object({
   location: locationSchema.optional().nullable(),
 });
 
+export async function GET() {
+  try {
+    const context = await requireAuthenticatedUser();
+    const orders = await listCustomerOrders(context.userId);
+    return NextResponse.json({ orders });
+  } catch (error) {
+    return customerOrderApiErrorResponse(error);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
+    const context = await requireAuthenticatedUser();
     const parsed = checkoutSchema.safeParse(await request.json());
     if (!parsed.success) {
       const locationIssue = parsed.error.issues.find((issue) => issue.path[0] === "location");
@@ -69,9 +79,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const order = await createServerOrder(readCartToken(request), parsed.data);
+    const order = await createServerOrder(
+      readCartToken(request),
+      context.userId,
+      parsed.data,
+    );
     return clearCartCookie(NextResponse.json({ order }, { status: 201 }));
   } catch (error) {
-    return orderingErrorResponse(error);
+    return customerOrderApiErrorResponse(error);
   }
 }

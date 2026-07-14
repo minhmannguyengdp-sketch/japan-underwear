@@ -1,4 +1,5 @@
 import { CatalogOrdering } from "@/components/catalog-ordering-v2";
+import { CustomerAccountShortcut } from "@/components/customer-account-shortcut";
 import { listCatalogProducts } from "@/lib/catalog";
 import type { CatalogProduct } from "@/lib/catalog-types";
 
@@ -47,7 +48,7 @@ function StateCard({ failed }: { failed: boolean }) {
         </div>
         <div className="bg-[#fbfaff] p-6 sm:p-8">
           <p className="text-sm font-black">Dừng process cũ, cập nhật code rồi chạy:</p>
-          <pre className="mt-3 overflow-x-auto rounded-2xl bg-ink-950 p-4 text-sm leading-7 text-white"><code>{`git pull --ff-only origin feat/catalog-variant-ordering-ui\nnpm run dev`}</code></pre>
+          <pre className="mt-3 overflow-x-auto rounded-2xl bg-ink-950 p-4 text-sm leading-7 text-white"><code>{`git pull --ff-only origin main\nnpm run dev`}</code></pre>
         </div>
       </section>
     </main>
@@ -58,5 +59,10 @@ export default async function HomePage() {
   const result = await loadCatalogPage();
   if (result.failed) return <StateCard failed />;
   if (result.products.length === 0) return <StateCard failed={false} />;
-  return <CatalogOrdering products={result.products} />;
+  return (
+    <>
+      <CustomerAccountShortcut />
+      <CatalogOrdering products={result.products} />
+    </>
+  );
 }
