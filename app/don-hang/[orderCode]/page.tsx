@@ -59,7 +59,7 @@ export default async function CustomerOrderDetailPage({ params }: PageProps) {
   try {
     order = await getCustomerOrder(authorization.userId, orderCode);
   } catch (error) {
-    if (error instanceof CustomerOrderError && error.status === 404) {
+    if (error instanceof CustomerOrderError) {
       notFound();
     }
     throw error;
