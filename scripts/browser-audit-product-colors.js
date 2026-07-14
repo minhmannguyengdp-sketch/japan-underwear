@@ -44,7 +44,7 @@
 
   function fold(value) {
     return clean(value)
-      .replace(/đ/gi, "d")
+      .replace(/[\u0110\u0111]/g, "d")
       .normalize("NFD")
       .replace(/\p{Diacritic}/gu, "")
       .toLowerCase();
