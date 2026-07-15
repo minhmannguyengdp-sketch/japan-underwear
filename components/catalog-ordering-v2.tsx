@@ -54,7 +54,17 @@ function blockerMessage(product: CatalogProduct) {
   if (product.orderingBlocker === "missing-size-cup") {
     return "Model đã có màu nhưng chưa có tổ hợp size/cup được xác nhận. Đặt hàng đang khóa để tránh tạo biến thể không có nguồn.";
   }
+  if (product.orderingBlocker === "missing-color-size-link") {
+    return "Model đã có màu và size/cup nhưng chưa có quan hệ màu–size/cup được xác nhận. Đặt hàng đang khóa để không tạo tổ hợp sai.";
+  }
   return "Model chưa đủ dữ liệu đặt hàng.";
+}
+
+function variantsForColor(product: CatalogProduct, colorId: string) {
+  const color = product.colors.find((item) => item.id === colorId);
+  if (!color) return [];
+  const allowed = new Set(color.variantIds);
+  return product.variants.filter((variant) => allowed.has(variant.id));
 }
 
 function geolocationErrorMessage(error: GeolocationPositionError) {
@@ -171,6 +181,24 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
     setError("");
   }
 
+  function changeRowColor(id: string, colorId: string) {
+    if (!selected) return;
+    setRows((current) =>
+      current.map((row) => {
+        if (row.id !== id) return row;
+        const allowed = variantsForColor(selected, colorId);
+        return {
+          ...row,
+          colorId,
+          variantId: allowed.some((variant) => variant.id === row.variantId)
+            ? row.variantId
+            : "",
+        };
+      }),
+    );
+    setError("");
+  }
+
   function removeRow(id: string) {
     setRows((current) =>
       current.length === 1 ? [makeRow(1)] : current.filter((row) => row.id !== id),
@@ -190,10 +218,15 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
     if (
       resolved.some(
         ({ row, color, variant }) =>
-          !row.colorId || !row.variantId || row.quantity < 1 || !color || !variant,
+          !row.colorId ||
+          !row.variantId ||
+          row.quantity < 1 ||
+          !color ||
+          !variant ||
+          !color.variantIds.includes(variant.id),
       )
     ) {
-      setError("Chọn đủ màu, size/cup và số lượng cho từng dòng.");
+      setError("Chọn đúng màu, size/cup được phép và số lượng cho từng dòng.");
       return;
     }
 
@@ -454,25 +487,28 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
                   </div>
                 ) : (
                   <div className="mt-6 space-y-3">
-                    {rows.map((row, index) => (
-                      <div key={row.id} className="rounded-2xl border border-slate-200 p-3">
-                        <div className="mb-3 flex items-center justify-between">
-                          <p className="text-sm font-black">Dòng đặt hàng {index + 1}</p>
-                          <button type="button" onClick={() => removeRow(row.id)} className="text-sm font-bold text-slate-400 hover:text-red-600">Xóa</button>
+                    {rows.map((row, index) => {
+                      const availableVariants = variantsForColor(selected, row.colorId);
+                      return (
+                        <div key={row.id} className="rounded-2xl border border-slate-200 p-3">
+                          <div className="mb-3 flex items-center justify-between">
+                            <p className="text-sm font-black">Dòng đặt hàng {index + 1}</p>
+                            <button type="button" onClick={() => removeRow(row.id)} className="text-sm font-bold text-slate-400 hover:text-red-600">Xóa</button>
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-[1fr_1fr_126px]">
+                            <select value={row.colorId} onChange={(event) => changeRowColor(row.id, event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold">
+                              <option value="">Chọn màu</option>
+                              {selected.colors.filter((color) => color.variantIds.length > 0).map((color) => <option key={color.id} value={color.id}>{color.label}</option>)}
+                            </select>
+                            <select value={row.variantId} onChange={(event) => updateRow(row.id, { variantId: event.target.value })} disabled={!row.colorId} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold disabled:bg-slate-100">
+                              <option value="">{row.colorId ? "Chọn size/cup" : "Chọn màu trước"}</option>
+                              {availableVariants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
+                            </select>
+                            <input type="number" min={1} max={999} value={row.quantity} onChange={(event) => updateRow(row.id, { quantity: Math.min(999, Math.max(1, Number(event.target.value) || 1)) })} className="h-11 rounded-xl border border-slate-200 px-3 text-center font-black" aria-label={`Số lượng dòng ${index + 1}`} />
+                          </div>
                         </div>
-                        <div className="grid gap-2 sm:grid-cols-[1fr_1fr_126px]">
-                          <select value={row.colorId} onChange={(event) => updateRow(row.id, { colorId: event.target.value })} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold">
-                            <option value="">Chọn màu</option>
-                            {selected.colors.map((color) => <option key={color.id} value={color.id}>{color.label}</option>)}
-                          </select>
-                          <select value={row.variantId} onChange={(event) => updateRow(row.id, { variantId: event.target.value })} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold">
-                            <option value="">Chọn size/cup</option>
-                            {selected.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
-                          </select>
-                          <input type="number" min={1} max={999} value={row.quantity} onChange={(event) => updateRow(row.id, { quantity: Math.min(999, Math.max(1, Number(event.target.value) || 1)) })} className="h-11 rounded-xl border border-slate-200 px-3 text-center font-black" aria-label={`Số lượng dòng ${index + 1}`} />
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <button type="button" onClick={() => { setRows((current) => [...current, makeRow(nextRow)]); setNextRow((value) => value + 1); }} className="w-full rounded-xl border border-dashed border-tt-purple-300 bg-tt-purple-50 px-4 py-3 text-sm font-black text-tt-purple-700">+ Thêm dòng đặt hàng</button>
                   </div>
                 )}
