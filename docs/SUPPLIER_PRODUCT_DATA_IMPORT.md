@@ -18,7 +18,7 @@ Quy trình dùng hai nguồn có phạm vi rõ ràng, không trộn bằng chứ
    - tổng 4 mẫu / 12 màu;
    - không có nguồn mô tả nên không cập nhật `short_description` cho bốn mã này.
 
-Sau khi ghép theo đúng nguồn, baseline 30 mã áo ngực có size/cup nhưng thiếu màu được phủ đủ 30/30.
+Sau khi ghép theo đúng nguồn, baseline 30 mã áo ngực có size/cup nhưng thiếu màu được phủ đủ 30/30. Tổng dữ liệu màu dùng cho hai luồng là 332 màu: 320 từ Excel và 12 từ xác nhận của chủ catalog.
 
 ## Quy tắc mô tả trong app
 
@@ -94,6 +94,8 @@ Cả hai dry run phải báo không có màu active ngoài danh sách nguồn.
 
 ## 5. Apply theo thứ tự nguồn
 
+Mỗi nguồn có transaction và bản ghi audit riêng. Chạy Excel trước, sau đó mới chạy bổ sung bốn mã:
+
 ```powershell
 cd F:\1_A_Disk_D\TT\japan-underwear
 
@@ -106,6 +108,8 @@ npm run catalog:owner-color:import -- `
   ".\data\local\tuan-thuy-owner-color-supplement-2026-07-15.json" `
   --apply
 ```
+
+Nếu luồng Excel thất bại thì dừng, không chạy bổ sung bốn mã.
 
 ## 6. Hậu kiểm
 
