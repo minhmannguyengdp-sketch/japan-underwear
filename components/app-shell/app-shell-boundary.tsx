@@ -14,11 +14,22 @@ type NavItem = {
 const navItems: NavItem[] = [
   {
     href: "/",
-    label: "Cửa hàng",
+    label: "Trang chủ",
     match: (pathname) => pathname === "/",
     icon: (
       <svg aria-hidden="true" viewBox="0 0 24 24">
         <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-9.5Z" />
+      </svg>
+    ),
+  },
+  {
+    href: "/cua-hang",
+    label: "Cửa hàng",
+    match: (pathname) => pathname.startsWith("/cua-hang"),
+    icon: (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M4 9h16l-1-5H5L4 9Z" />
+        <path d="M5 9v11h14V9M9 20v-6h6v6" />
       </svg>
     ),
   },
@@ -35,8 +46,7 @@ const navItems: NavItem[] = [
   {
     href: "/tai-khoan",
     label: "Tài khoản",
-    match: (pathname) =>
-      pathname.startsWith("/tai-khoan") || pathname.startsWith("/dang-nhap"),
+    match: (pathname) => pathname.startsWith("/tai-khoan") || pathname.startsWith("/dang-nhap"),
     icon: (
       <svg aria-hidden="true" viewBox="0 0 24 24">
         <circle cx="12" cy="8" r="4" />
@@ -46,31 +56,42 @@ const navItems: NavItem[] = [
   },
 ];
 
+const routeTitles: Array<{ match: (pathname: string) => boolean; title: string; subtitle: string }> = [
+  { match: (pathname) => pathname.startsWith("/cua-hang"), title: "Cửa hàng", subtitle: "Pensee · Winking" },
+  { match: (pathname) => pathname.startsWith("/don-hang"), title: "Đơn hàng", subtitle: "Theo dõi đơn sỉ" },
+  { match: (pathname) => pathname.startsWith("/tai-khoan") || pathname.startsWith("/dang-nhap"), title: "Tài khoản", subtitle: "Hồ sơ đặt hàng" },
+  { match: () => true, title: "Tuấn Thủy", subtitle: "Đặt hàng sỉ" },
+];
+
 export function AppShellBoundary({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
-  if (pathname.startsWith("/admin")) {
-    return children;
+  if (pathname.startsWith("/admin")) return children;
+
+  if (pathname === "/chao-mung") {
+    return (
+      <div className="app-stage">
+        <div className="public-app-shell public-app-shell--welcome">{children}</div>
+      </div>
+    );
   }
+
+  const routeTitle = routeTitles.find((item) => item.match(pathname)) ?? routeTitles[routeTitles.length - 1];
 
   return (
     <div className="app-stage">
       <div className="public-app-shell" data-route={pathname}>
         <header className="public-app-header">
-          <Link href="/" className="public-brand" aria-label="Về cửa hàng Tuấn Thủy">
+          <Link href="/" className="public-brand" aria-label="Về trang chủ Tuấn Thủy">
             <span className="public-brand-logo">
               <img src="/brand/pensee-logo.png" alt="" />
             </span>
-            <span>
-              <strong>Tuấn Thủy</strong>
-              <small>Đặt hàng sỉ</small>
+            <span className="public-brand-copy">
+              <strong>{routeTitle.title}</strong>
+              <small>{routeTitle.subtitle}</small>
             </span>
           </Link>
-          <Link
-            href="/tai-khoan"
-            className="public-account-button"
-            aria-label="Mở tài khoản"
-          >
+          <Link href="/tai-khoan" className="public-account-button" aria-label="Mở tài khoản">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <circle cx="12" cy="8" r="4" />
               <path d="M5 21a7 7 0 0 1 14 0" />
