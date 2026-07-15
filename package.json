@@ -25,6 +25,9 @@
     "catalog:supplier:reconcile:approve": "node scripts/catalog/approve-tuan-thuy-supplier-color-reconciliation.mjs",
     "catalog:supplier:reconcile:import": "node scripts/catalog/import-tuan-thuy-supplier-color-reconciliation.mjs",
     "catalog:supplier:reconcile:verify": "node scripts/catalog/verify-tuan-thuy-supplier-color-reconciliation.mjs",
+    "catalog:supplier:variants:validate": "node scripts/catalog/import-tuan-thuy-supplier-color-variants.mjs",
+    "catalog:supplier:variants:import": "node scripts/catalog/import-tuan-thuy-supplier-color-variants.mjs",
+    "catalog:supplier:variants:verify": "node scripts/catalog/verify-tuan-thuy-supplier-color-variants.mjs",
     "catalog:supplier:verify": "node scripts/catalog/verify-tuan-thuy-supplier-product-data.mjs",
     "catalog:owner-color:validate": "node scripts/catalog/import-tuan-thuy-owner-color-supplement.mjs",
     "catalog:owner-color:import": "node scripts/catalog/import-tuan-thuy-owner-color-supplement.mjs",
@@ -53,7 +56,7 @@
     "db:repair-phase6": "node scripts/db/apply-phase6-checkout-onboarding.mjs",
     "db:repair-manual-orders": "node scripts/db/apply-manual-order-shared-service.mjs",
     "db:repair-catalog-prices": "node scripts/db/apply-catalog-price-management.mjs",
-    "db:verify": "node scripts/db/verify-catalog-migration.mjs && node scripts/db/verify-order-status-lifecycle.mjs && node scripts/db/verify-checkout-geolocation.mjs && node scripts/db/verify-auth-foundation.mjs && node scripts/db/verify-customer-order-ownership.mjs && node scripts/db/verify-phase6-checkout-onboarding.mjs && node scripts/db/verify-admin-customer-management.mjs && node scripts/db/verify-manual-order-shared-service.mjs && node scripts/db/verify-catalog-price-management.mjs",
+    "db:verify": "node scripts/db/verify-catalog-migration.mjs && node scripts/db/verify-order-status-lifecycle.mjs && node scripts/db/verify-checkout-geolocation.mjs && node scripts/db/verify-auth-foundation.mjs && node scripts/db/verify-customer-order-ownership.mjs && node scripts/db/verify-phase6-checkout-onboarding.mjs && node scripts/db/verify-admin-customer-management.mjs && node scripts/db/verify-manual-order-shared-service.mjs && node scripts/db/verify-catalog-price-management.mjs && node scripts/db/verify-color-variant-availability.mjs",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
