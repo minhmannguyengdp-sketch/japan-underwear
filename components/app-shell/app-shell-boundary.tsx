@@ -118,7 +118,7 @@ export function AppShellBoundary({ children }: { children: ReactNode }) {
         <header className="public-app-header">
           <Link href="/" className="public-brand" aria-label="Về trang chủ Tuấn Thủy">
             <span className="public-brand-logo">
-              <img src="/brand/pensee-logo-transparent.svg" alt="" />
+              <img src="/brand/pensee-logo.png" alt="" />
             </span>
             <span className="public-brand-copy">
               <strong>{routeTitle.title}</strong>
