@@ -66,12 +66,8 @@ export const products = catalogSchema.table(
   "products",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    brandId: uuid("brand_id")
-      .notNull()
-      .references(() => brands.id, { onDelete: "restrict" }),
-    categoryId: uuid("category_id")
-      .notNull()
-      .references(() => categories.id, { onDelete: "restrict" }),
+    brandId: uuid("brand_id").notNull().references(() => brands.id, { onDelete: "restrict" }),
+    categoryId: uuid("category_id").notNull().references(() => categories.id, { onDelete: "restrict" }),
     modelCode: text("model_code").notNull(),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
@@ -87,11 +83,7 @@ export const products = catalogSchema.table(
   },
   (table) => [
     uniqueIndex("products_slug_uidx").on(table.slug),
-    uniqueIndex("products_brand_category_model_uidx").on(
-      table.brandId,
-      table.categoryId,
-      table.modelCode,
-    ),
+    uniqueIndex("products_brand_category_model_uidx").on(table.brandId, table.categoryId, table.modelCode),
     index("products_category_idx").on(table.categoryId),
     index("products_active_idx").on(table.isActive),
     check("products_base_price_nonnegative_chk", sql`${table.basePrice} >= 0`),
@@ -103,9 +95,7 @@ export const productColors = catalogSchema.table(
   "product_colors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    productId: uuid("product_id")
-      .notNull()
-      .references(() => products.id, { onDelete: "cascade" }),
+    productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
     code: text("code").notNull(),
     name: text("name").notNull(),
     swatch: text("swatch"),
@@ -127,9 +117,7 @@ export const productVariants = catalogSchema.table(
   "product_variants",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    productId: uuid("product_id")
-      .notNull()
-      .references(() => products.id, { onDelete: "cascade" }),
+    productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
     sizeCode: text("size_code").notNull(),
     cupCode: text("cup_code"),
     sku: text("sku"),
@@ -146,20 +134,33 @@ export const productVariants = catalogSchema.table(
     uniqueIndex("product_variants_product_size_no_cup_uidx")
       .on(table.productId, table.sizeCode)
       .where(sql`${table.cupCode} is null`),
-    uniqueIndex("product_variants_sku_uidx")
-      .on(table.sku)
-      .where(sql`${table.sku} is not null`),
+    uniqueIndex("product_variants_sku_uidx").on(table.sku).where(sql`${table.sku} is not null`),
     index("product_variants_product_idx").on(table.productId),
     check("product_variants_size_nonempty_chk", sql`btrim(${table.sizeCode}) <> ''`),
-    check(
-      "product_variants_cup_format_chk",
-      sql`${table.cupCode} is null or ${table.cupCode} ~ '^[A-Z]+$'`,
-    ),
-    check(
-      "product_variants_price_override_nonnegative_chk",
-      sql`${table.priceOverride} is null or ${table.priceOverride} >= 0`,
-    ),
+    check("product_variants_cup_format_chk", sql`${table.cupCode} is null or ${table.cupCode} ~ '^[A-Z]+$'`),
+    check("product_variants_price_override_nonnegative_chk", sql`${table.priceOverride} is null or ${table.priceOverride} >= 0`),
     check("product_variants_row_version_positive_chk", sql`${table.rowVersion} >= 1`),
+  ],
+);
+
+export const productColorVariants = catalogSchema.table(
+  "product_color_variants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+    colorId: uuid("color_id").notNull().references(() => productColors.id, { onDelete: "cascade" }),
+    variantId: uuid("variant_id").notNull().references(() => productVariants.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("product_color_variants_color_variant_uidx").on(table.colorId, table.variantId),
+    index("product_color_variants_product_active_idx").on(table.productId, table.isActive),
+    index("product_color_variants_color_active_idx").on(table.colorId, table.isActive),
+    index("product_color_variants_variant_active_idx").on(table.variantId, table.isActive),
+    check("product_color_variants_source_nonempty_chk", sql`btrim(${table.source}) <> ''`),
   ],
 );
 
@@ -167,9 +168,7 @@ export const productImages = catalogSchema.table(
   "product_images",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    productId: uuid("product_id")
-      .notNull()
-      .references(() => products.id, { onDelete: "cascade" }),
+    productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
     colorId: uuid("color_id").references(() => productColors.id, { onDelete: "set null" }),
     r2Key: text("r2_key").notNull(),
     sourceFilename: text("source_filename"),
@@ -190,10 +189,7 @@ export const carts = catalogSchema.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     token: uuid("token").defaultRandom().notNull(),
-    status: text("status")
-      .$type<"active" | "converted" | "abandoned">()
-      .notNull()
-      .default("active"),
+    status: text("status").$type<"active" | "converted" | "abandoned">().notNull().default("active"),
     convertedAt: timestamp("converted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -209,26 +205,16 @@ export const cartItems = catalogSchema.table(
   "cart_items",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    cartId: uuid("cart_id")
-      .notNull()
-      .references(() => carts.id, { onDelete: "cascade" }),
-    productVariantId: uuid("product_variant_id")
-      .notNull()
-      .references(() => productVariants.id, { onDelete: "restrict" }),
-    colorId: uuid("color_id")
-      .notNull()
-      .references(() => productColors.id, { onDelete: "restrict" }),
+    cartId: uuid("cart_id").notNull().references(() => carts.id, { onDelete: "cascade" }),
+    productVariantId: uuid("product_variant_id").notNull().references(() => productVariants.id, { onDelete: "restrict" }),
+    colorId: uuid("color_id").notNull().references(() => productColors.id, { onDelete: "restrict" }),
     quantity: integer("quantity").notNull(),
     unitPriceSnapshot: integer("unit_price_snapshot").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("cart_items_cart_variant_color_uidx").on(
-      table.cartId,
-      table.productVariantId,
-      table.colorId,
-    ),
+    uniqueIndex("cart_items_cart_variant_color_uidx").on(table.cartId, table.productVariantId, table.colorId),
     index("cart_items_cart_idx").on(table.cartId),
     index("cart_items_variant_idx").on(table.productVariantId),
     index("cart_items_color_idx").on(table.colorId),
@@ -242,20 +228,11 @@ export const orders = catalogSchema.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orderCode: text("order_code").notNull(),
-    orderSource: text("order_source")
-      .$type<"legacy_cart" | "customer_checkout" | "staff_manual">()
-      .notNull(),
-    sourceCartId: uuid("source_cart_id").references(() => carts.id, {
-      onDelete: "restrict",
-    }),
+    orderSource: text("order_source").$type<"legacy_cart" | "customer_checkout" | "staff_manual">().notNull(),
+    sourceCartId: uuid("source_cart_id").references(() => carts.id, { onDelete: "restrict" }),
     manualRequestId: uuid("manual_request_id"),
-    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
-      onDelete: "restrict",
-    }),
-    status: text("status")
-      .$type<"submitted" | "confirmed" | "processing" | "completed" | "cancelled">()
-      .notNull()
-      .default("submitted"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "restrict" }),
+    status: text("status").$type<"submitted" | "confirmed" | "processing" | "completed" | "cancelled">().notNull().default("submitted"),
     customerStoreName: text("customer_store_name"),
     customerName: text("customer_name").notNull(),
     customerPhone: text("customer_phone").notNull(),
@@ -268,9 +245,7 @@ export const orders = catalogSchema.table(
     locationSource: text("location_source").$type<"browser_geolocation">(),
     subtotal: integer("subtotal").notNull(),
     currency: text("currency").notNull().default("VND"),
-    customerUserId: uuid("customer_user_id").references(() => users.id, {
-      onDelete: "restrict",
-    }),
+    customerUserId: uuid("customer_user_id").references(() => users.id, { onDelete: "restrict" }),
     clientRequestId: uuid("client_request_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -287,14 +262,8 @@ export const orders = catalogSchema.table(
     index("orders_status_created_idx").on(table.status, table.createdAt),
     index("orders_source_created_idx").on(table.orderSource, table.createdAt),
     index("orders_customer_phone_idx").on(table.customerPhone),
-    check(
-      "orders_status_chk",
-      sql`${table.status} in ('submitted', 'confirmed', 'processing', 'completed', 'cancelled')`,
-    ),
-    check(
-      "orders_order_source_chk",
-      sql`${table.orderSource} in ('legacy_cart', 'customer_checkout', 'staff_manual')`,
-    ),
+    check("orders_status_chk", sql`${table.status} in ('submitted', 'confirmed', 'processing', 'completed', 'cancelled')`),
+    check("orders_order_source_chk", sql`${table.orderSource} in ('legacy_cart', 'customer_checkout', 'staff_manual')`),
     check(
       "orders_creation_identity_chk",
       sql`(
@@ -318,14 +287,8 @@ export const orders = catalogSchema.table(
         and ${table.createdByUserId} is not null
       )`,
     ),
-    check(
-      "orders_client_request_owner_chk",
-      sql`${table.clientRequestId} is null or ${table.customerUserId} is not null`,
-    ),
-    check(
-      "orders_customer_store_name_nonempty_chk",
-      sql`${table.customerStoreName} is null or btrim(${table.customerStoreName}) <> ''`,
-    ),
+    check("orders_client_request_owner_chk", sql`${table.clientRequestId} is null or ${table.customerUserId} is not null`),
+    check("orders_customer_store_name_nonempty_chk", sql`${table.customerStoreName} is null or btrim(${table.customerStoreName}) <> ''`),
     check("orders_customer_name_nonempty_chk", sql`btrim(${table.customerName}) <> ''`),
     check("orders_customer_phone_nonempty_chk", sql`btrim(${table.customerPhone}) <> ''`),
     check("orders_subtotal_chk", sql`${table.subtotal} >= 0`),
@@ -339,26 +302,11 @@ export const orders = catalogSchema.table(
         ${table.locationSource}
       ) in (0, 5)`,
     ),
-    check(
-      "orders_location_latitude_chk",
-      sql`${table.deliveryLatitude} is null or ${table.deliveryLatitude} between -90 and 90`,
-    ),
-    check(
-      "orders_location_longitude_chk",
-      sql`${table.deliveryLongitude} is null or ${table.deliveryLongitude} between -180 and 180`,
-    ),
-    check(
-      "orders_location_accuracy_chk",
-      sql`${table.deliveryAccuracyMeters} is null or (${table.deliveryAccuracyMeters} > 0 and ${table.deliveryAccuracyMeters} <= 100000)`,
-    ),
-    check(
-      "orders_location_collected_at_chk",
-      sql`${table.locationCollectedAt} is null or ${table.locationCollectedAt} >= timestamptz '2000-01-01 00:00:00+00'`,
-    ),
-    check(
-      "orders_location_source_chk",
-      sql`${table.locationSource} is null or ${table.locationSource} = 'browser_geolocation'`,
-    ),
+    check("orders_location_latitude_chk", sql`${table.deliveryLatitude} is null or ${table.deliveryLatitude} between -90 and 90`),
+    check("orders_location_longitude_chk", sql`${table.deliveryLongitude} is null or ${table.deliveryLongitude} between -180 and 180`),
+    check("orders_location_accuracy_chk", sql`${table.deliveryAccuracyMeters} is null or (${table.deliveryAccuracyMeters} > 0 and ${table.deliveryAccuracyMeters} <= 100000)`),
+    check("orders_location_collected_at_chk", sql`${table.locationCollectedAt} is null or ${table.locationCollectedAt} >= timestamptz '2000-01-01 00:00:00+00'`),
+    check("orders_location_source_chk", sql`${table.locationSource} is null or ${table.locationSource} = 'browser_geolocation'`),
   ],
 );
 
@@ -366,15 +314,9 @@ export const orderItems = catalogSchema.table(
   "order_items",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    orderId: uuid("order_id")
-      .notNull()
-      .references(() => orders.id, { onDelete: "cascade" }),
-    productVariantId: uuid("product_variant_id")
-      .notNull()
-      .references(() => productVariants.id, { onDelete: "restrict" }),
-    colorId: uuid("color_id")
-      .notNull()
-      .references(() => productColors.id, { onDelete: "restrict" }),
+    orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
+    productVariantId: uuid("product_variant_id").notNull().references(() => productVariants.id, { onDelete: "restrict" }),
+    colorId: uuid("color_id").notNull().references(() => productColors.id, { onDelete: "restrict" }),
     quantity: integer("quantity").notNull(),
     unitPrice: integer("unit_price").notNull(),
     lineTotal: integer("line_total").notNull(),
@@ -387,20 +329,13 @@ export const orderItems = catalogSchema.table(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("order_items_order_variant_color_uidx").on(
-      table.orderId,
-      table.productVariantId,
-      table.colorId,
-    ),
+    uniqueIndex("order_items_order_variant_color_uidx").on(table.orderId, table.productVariantId, table.colorId),
     index("order_items_order_idx").on(table.orderId),
     index("order_items_variant_idx").on(table.productVariantId),
     index("order_items_color_idx").on(table.colorId),
     check("order_items_quantity_chk", sql`${table.quantity} between 1 and 999`),
     check("order_items_unit_price_chk", sql`${table.unitPrice} >= 0`),
-    check(
-      "order_items_line_total_chk",
-      sql`${table.lineTotal} = ${table.unitPrice} * ${table.quantity}`,
-    ),
+    check("order_items_line_total_chk", sql`${table.lineTotal} = ${table.unitPrice} * ${table.quantity}`),
   ],
 );
 
@@ -429,9 +364,7 @@ export const catalogChangeAudit = catalogSchema.table(
     requestId: uuid("request_id"),
     entityType: text("entity_type").$type<"product" | "color" | "variant">().notNull(),
     entityId: uuid("entity_id").notNull(),
-    productId: uuid("product_id")
-      .notNull()
-      .references(() => products.id, { onDelete: "restrict" }),
+    productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "restrict" }),
     action: text("action").$type<"updated">().notNull().default("updated"),
     beforeSnapshot: jsonb("before_snapshot").$type<Record<string, unknown>>().notNull(),
     afterSnapshot: jsonb("after_snapshot").$type<Record<string, unknown>>().notNull(),
@@ -440,28 +373,13 @@ export const catalogChangeAudit = catalogSchema.table(
   (table) => [
     index("catalog_change_audit_product_created_idx").on(table.productId, table.createdAt),
     index("catalog_change_audit_actor_created_idx").on(table.actorUserId, table.createdAt),
-    index("catalog_change_audit_entity_created_idx").on(
-      table.entityType,
-      table.entityId,
-      table.createdAt,
-    ),
-    index("catalog_change_audit_request_idx")
-      .on(table.requestId)
-      .where(sql`${table.requestId} is not null`),
+    index("catalog_change_audit_entity_created_idx").on(table.entityType, table.entityId, table.createdAt),
+    index("catalog_change_audit_request_idx").on(table.requestId).where(sql`${table.requestId} is not null`),
     check("catalog_change_audit_actor_label_nonempty_chk", sql`btrim(${table.actorLabel}) <> ''`),
-    check(
-      "catalog_change_audit_entity_type_chk",
-      sql`${table.entityType} in ('product', 'color', 'variant')`,
-    ),
+    check("catalog_change_audit_entity_type_chk", sql`${table.entityType} in ('product', 'color', 'variant')`),
     check("catalog_change_audit_action_chk", sql`${table.action} = 'updated'`),
-    check(
-      "catalog_change_audit_before_object_chk",
-      sql`jsonb_typeof(${table.beforeSnapshot}) = 'object'`,
-    ),
-    check(
-      "catalog_change_audit_after_object_chk",
-      sql`jsonb_typeof(${table.afterSnapshot}) = 'object'`,
-    ),
+    check("catalog_change_audit_before_object_chk", sql`jsonb_typeof(${table.beforeSnapshot}) = 'object'`),
+    check("catalog_change_audit_after_object_chk", sql`jsonb_typeof(${table.afterSnapshot}) = 'object'`),
   ],
 );
 
@@ -469,6 +387,7 @@ export type Brand = typeof brands.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type ProductColor = typeof productColors.$inferSelect;
 export type ProductVariant = typeof productVariants.$inferSelect;
+export type ProductColorVariant = typeof productColorVariants.$inferSelect;
 export type ProductImage = typeof productImages.$inferSelect;
 export type Cart = typeof carts.$inferSelect;
 export type CartItem = typeof cartItems.$inferSelect;
