@@ -36,14 +36,31 @@ export default async function CustomerProfilePage() {
       </section>
 
       <section className="account-quick-links">
+        <Link href="/cua-hang">
+          <span className="account-quick-links__icon">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M5 5.5h14v15H5zM8 5.5a4 4 0 0 1 8 0" />
+            </svg>
+          </span>
+          <div><strong>Mở cửa hàng</strong><small>Xem sản phẩm Pensee và Winking</small></div>
+          <b>→</b>
+        </Link>
         <Link href="/don-hang">
-          <span className="account-quick-links__icon">🧾</span>
+          <span className="account-quick-links__icon">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />
+            </svg>
+          </span>
           <div><strong>Đơn hàng của tôi</strong><small>Xem trạng thái và chi tiết đơn</small></div>
           <b>→</b>
         </Link>
-        <Link href="/cua-hang">
-          <span className="account-quick-links__icon">🛍️</span>
-          <div><strong>Tiếp tục mua hàng</strong><small>Mở catalog Pensee và Winking</small></div>
+        <Link href="/su-kien">
+          <span className="account-quick-links__icon">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M5 4h14v16H5zM8 2v4M16 2v4M5 9h14" />
+            </svg>
+          </span>
+          <div><strong>Sự kiện</strong><small>Xem ưu đãi và thông báo mới</small></div>
           <b>→</b>
         </Link>
       </section>
@@ -57,7 +74,8 @@ export default async function CustomerProfilePage() {
           <em>{profile ? "Đã lưu" : "Cần bổ sung"}</em>
         </div>
         <p className="account-profile-card__intro">
-          Hệ thống dùng thông tin này làm snapshot cho từng đơn. Cart và checkout không nhận lại tên, điện thoại hay địa chỉ từ trình duyệt.
+          Hệ thống dùng thông tin này làm snapshot cho từng đơn hàng. Hãy giữ số điện thoại
+          và địa chỉ luôn chính xác.
         </p>
         <CustomerProfileForm initialProfile={profile} defaultContactName={authorization.name ?? ""} />
       </section>
