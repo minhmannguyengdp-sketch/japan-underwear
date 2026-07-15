@@ -7,6 +7,7 @@ import { PwaRuntime } from "@/components/app-shell/pwa-runtime";
 import "./globals.css";
 import "./mobile-shell-polish.css";
 import "./welcome-screen.css";
+import "./public-shell-final.css";
 
 export const metadata: Metadata = {
   title: {
@@ -22,8 +23,8 @@ export const metadata: Metadata = {
     title: "Tuấn Thủy",
   },
   icons: {
-    icon: "/brand/pensee-logo.png",
-    apple: "/brand/pensee-logo.png",
+    icon: "/brand/pensee-logo-current.png",
+    apple: "/brand/pensee-logo-current.png",
   },
 };
 
