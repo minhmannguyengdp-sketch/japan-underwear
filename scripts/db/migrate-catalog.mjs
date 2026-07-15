@@ -12,7 +12,59 @@ const require = createRequire(import.meta.url);
 loadEnv({ path: path.resolve(cwd, ".env.local"), override: true, quiet: true });
 loadEnv({ path: path.resolve(cwd, ".env"), override: false, quiet: true });
 
-const ORDER_PROCESSING_MIGRATION_CREATED_AT = 1783890000000;
+const REPAIR_MIGRATIONS = [
+  {
+    createdAt: 1783853000000,
+    filename: "apply-order-variant-identity.mjs",
+    label: "Order variant identity migration",
+  },
+  {
+    createdAt: 1783860000000,
+    filename: "apply-server-cart-orders.mjs",
+    label: "Server cart and orders migration",
+  },
+  {
+    createdAt: 1783865000000,
+    filename: "apply-order-status-lifecycle.mjs",
+    label: "Order status lifecycle migration",
+    supersededBy: 1783890000000,
+  },
+  {
+    createdAt: 1783870000000,
+    filename: "apply-checkout-geolocation.mjs",
+    label: "Checkout geolocation migration",
+  },
+  {
+    createdAt: 1783875000000,
+    filename: "apply-auth-foundation.mjs",
+    label: "Auth foundation migration",
+  },
+  {
+    createdAt: 1783880000000,
+    filename: "apply-customer-order-ownership.mjs",
+    label: "Customer order ownership migration",
+  },
+  {
+    createdAt: 1783885000000,
+    filename: "apply-phase6-checkout-onboarding.mjs",
+    label: "Phase 6 checkout and onboarding migration",
+  },
+  {
+    createdAt: 1783890000000,
+    filename: "apply-order-processing-lifecycle.mjs",
+    label: "Order processing lifecycle migration",
+  },
+  {
+    createdAt: 1783895000000,
+    filename: "apply-manual-order-shared-service.mjs",
+    label: "Manual order shared service migration",
+  },
+  {
+    createdAt: 1783900000000,
+    filename: "apply-catalog-price-management.mjs",
+    label: "Catalog price management migration",
+  },
+];
 
 function run(command, args, label) {
   console.log(`\n=== ${label} ===`);
@@ -83,6 +135,7 @@ async function withMigrationJournal(callback) {
     connectionString,
     ssl: isLocalDatabase(connectionString) ? undefined : { rejectUnauthorized: false },
     connectionTimeoutMillis: 30_000,
+    query_timeout: 120_000,
   });
   try {
     await client.connect();
@@ -98,49 +151,44 @@ async function withMigrationJournal(callback) {
   }
 }
 
-async function isMigrationApplied(createdAt) {
+async function readAppliedMigrationTimes() {
   return withMigrationJournal(async (client) => {
     const result = await client.query(
-      "SELECT 1 FROM drizzle.__drizzle_migrations WHERE created_at = $1",
-      [createdAt],
+      "SELECT created_at FROM drizzle.__drizzle_migrations ORDER BY created_at",
     );
-    return result.rowCount === 1;
+    return new Set(
+      result.rows.map((row) => Number(row.created_at)).filter(Number.isSafeInteger),
+    );
   });
 }
 
 async function readPendingMigrations() {
-  return withMigrationJournal(async (client) => {
-    const appliedResult = await client.query(
-      "SELECT created_at FROM drizzle.__drizzle_migrations ORDER BY created_at",
-    );
-    const applied = new Set(
-      appliedResult.rows.map((row) => Number(row.created_at)).filter(Number.isSafeInteger),
-    );
-    return readRepositoryMigrationTimes().filter((createdAt) => !applied.has(createdAt));
-  });
+  const applied = await readAppliedMigrationTimes();
+  return readRepositoryMigrationTimes().filter((createdAt) => !applied.has(createdAt));
 }
 
 function runDbScript(filename, label) {
   run(process.execPath, [path.resolve(cwd, "scripts", "db", filename)], label);
 }
 
-runDbScript("apply-order-variant-identity.mjs", "Order variant identity migration");
-runDbScript("apply-server-cart-orders.mjs", "Server cart and orders migration");
+const appliedMigrations = await readAppliedMigrationTimes();
+for (const migration of REPAIR_MIGRATIONS) {
+  if (appliedMigrations.has(migration.createdAt)) {
+    console.log(`\n=== ${migration.label} ===`);
+    console.log(`Migration ${migration.createdAt} đã có trong journal; bỏ qua repair runner.`);
+    continue;
+  }
+  if (migration.supersededBy && appliedMigrations.has(migration.supersededBy)) {
+    console.log(`\n=== ${migration.label} ===`);
+    console.log(
+      `Migration ${migration.supersededBy} đã thay thế ${migration.createdAt}; bỏ qua runner cũ.`,
+    );
+    continue;
+  }
 
-if (await isMigrationApplied(ORDER_PROCESSING_MIGRATION_CREATED_AT)) {
-  console.log("\n=== Order status lifecycle migration ===");
-  console.log("Migration 0010 đã active; bỏ qua runner 0005 để không hạ lifecycle về trạng thái cũ.");
-} else {
-  runDbScript("apply-order-status-lifecycle.mjs", "Order status lifecycle migration");
+  runDbScript(migration.filename, migration.label);
+  appliedMigrations.add(migration.createdAt);
 }
-
-runDbScript("apply-checkout-geolocation.mjs", "Checkout geolocation migration");
-runDbScript("apply-auth-foundation.mjs", "Auth foundation migration");
-runDbScript("apply-customer-order-ownership.mjs", "Customer order ownership migration");
-runDbScript("apply-phase6-checkout-onboarding.mjs", "Phase 6 checkout and onboarding migration");
-runDbScript("apply-order-processing-lifecycle.mjs", "Order processing lifecycle migration");
-runDbScript("apply-manual-order-shared-service.mjs", "Manual order shared service migration");
-runDbScript("apply-catalog-price-management.mjs", "Catalog price management migration");
 
 let pending = await readPendingMigrations();
 if (pending.length === 0) {
