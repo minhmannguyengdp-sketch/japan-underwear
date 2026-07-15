@@ -1,0 +1,332 @@
+:root {
+  --app-header-height: 58px;
+  --app-nav-height: 64px;
+}
+
+.app-stage {
+  background:
+    radial-gradient(circle at 50% -12%, rgba(196, 139, 219, 0.28), transparent 27rem),
+    #24112d;
+}
+
+.public-app-shell {
+  background: #f8f3fa;
+}
+
+.public-app-shell::before {
+  height: 210px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), #f8f3fa 98%),
+    url("/brand/pensee-app-background.png") center top / cover no-repeat;
+  opacity: 0.16;
+}
+
+.public-app-header {
+  min-height: calc(var(--app-header-height) + var(--safe-top));
+  align-items: center;
+  padding:
+    calc(7px + var(--safe-top))
+    14px
+    7px;
+  border-bottom-color: rgba(71, 27, 91, 0.07);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 20px rgba(58, 19, 76, 0.06);
+}
+
+.public-brand {
+  gap: 8px;
+}
+
+.public-brand-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  box-shadow: 0 5px 14px rgba(78, 32, 104, 0.11);
+}
+
+.public-brand strong {
+  font-size: 14px;
+}
+
+.public-brand small {
+  margin-top: 3px;
+  font-size: 8px;
+  letter-spacing: 0.13em;
+}
+
+.public-account-button {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.public-app-canvas {
+  padding-top: calc(var(--app-header-height) + var(--safe-top));
+  padding-bottom: calc(var(--app-nav-height) + var(--safe-bottom));
+}
+
+.public-bottom-nav {
+  min-height: calc(var(--app-nav-height) + var(--safe-bottom));
+  padding: 6px 8px calc(6px + var(--safe-bottom));
+  border-top-color: rgba(71, 27, 91, 0.08);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 -7px 24px rgba(57, 18, 75, 0.06);
+}
+
+.public-bottom-nav a {
+  height: 50px;
+  gap: 3px;
+  border-radius: 14px;
+  font-size: 10px;
+}
+
+.public-bottom-nav a.is-active {
+  background: #efe1f5;
+}
+
+.public-bottom-nav svg {
+  width: 20px;
+  height: 20px;
+}
+
+.public-app-canvas main {
+  min-height: calc(100dvh - var(--app-header-height) - var(--app-nav-height)) !important;
+  padding-bottom: 8px !important;
+}
+
+/* Catalog toolbar: giữ nút giỏ thật nhưng bỏ thanh desktop nặng nề. */
+.public-app-canvas main > header {
+  position: relative !important;
+  top: auto !important;
+  z-index: 10 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.public-app-canvas main > header > div {
+  width: 100% !important;
+  max-width: none !important;
+  height: 48px !important;
+  justify-content: flex-end !important;
+  padding: 8px 14px 4px !important;
+}
+
+.public-app-canvas main > header > div > div:first-child {
+  display: none !important;
+}
+
+.public-app-canvas main > header button {
+  min-height: 36px !important;
+  padding: 0 13px !important;
+  border: 1px solid #dfcfe8 !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: #4e2068 !important;
+  font-size: 12px !important;
+  box-shadow: 0 5px 16px rgba(70, 25, 91, 0.06) !important;
+}
+
+/* Hero/catalog controls: dùng ảnh nền thật như một lớp nhận diện, không tạo khoảng trắng lớn. */
+.public-app-canvas main > section:first-of-type {
+  margin: 0 12px !important;
+  overflow: hidden;
+  border: 1px solid rgba(111, 55, 136, 0.08) !important;
+  border-radius: 20px !important;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(249, 240, 252, 0.91)),
+    url("/brand/pensee-app-background.png") center 18% / cover no-repeat !important;
+  box-shadow: 0 10px 28px rgba(69, 24, 88, 0.07);
+}
+
+.public-app-canvas main > section:first-of-type > div {
+  width: 100% !important;
+  max-width: none !important;
+  padding: 16px 14px 14px !important;
+}
+
+.public-app-canvas main > section:first-of-type p:first-child {
+  margin: 0 !important;
+  color: #7a3c96 !important;
+  font-size: 10px !important;
+  letter-spacing: 0.14em !important;
+}
+
+.public-app-canvas main > section:first-of-type [class*="lg:flex-row"] {
+  margin-top: 6px !important;
+  gap: 12px !important;
+}
+
+.public-app-canvas main > section:first-of-type h1 {
+  max-width: 300px !important;
+  margin-top: 0 !important;
+  color: #32123f;
+  font-size: 23px !important;
+  line-height: 1.08 !important;
+}
+
+.public-app-canvas main > section:first-of-type h1 + p {
+  display: -webkit-box;
+  margin-top: 8px !important;
+  overflow: hidden;
+  color: #6f6274 !important;
+  font-size: 12px !important;
+  line-height: 1.5 !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.public-app-canvas main > section:first-of-type [class*="grid-cols-3"] {
+  gap: 7px !important;
+}
+
+.public-app-canvas main > section:first-of-type [class*="grid-cols-3"] > div {
+  min-width: 0;
+  padding: 8px 4px !important;
+  border: 1px solid rgba(107, 54, 132, 0.07);
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.82) !important;
+  color: #74657a;
+  font-size: 10px;
+}
+
+.public-app-canvas main > section:first-of-type [class*="grid-cols-3"] strong {
+  color: #3e174f;
+  font-size: 17px !important;
+}
+
+.public-app-canvas main > section:first-of-type [class*="md:grid-cols"] {
+  margin-top: 12px !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+.public-app-canvas main > section:first-of-type [class*="md:grid-cols"] > input:first-child {
+  grid-column: 1 / -1;
+}
+
+.public-app-canvas main > section:first-of-type input,
+.public-app-canvas main > section:first-of-type select {
+  height: 42px !important;
+  min-width: 0;
+  border-color: #e2d5e8 !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  padding-right: 11px !important;
+  padding-left: 11px !important;
+  color: #423347;
+  font-size: 13px !important;
+  box-shadow: none !important;
+}
+
+/* Lưới sản phẩm gọn, cân đối và ít bóng hơn. */
+.public-app-canvas main > section:nth-of-type(2) {
+  padding: 12px 12px 18px !important;
+}
+
+.public-app-canvas main > section:nth-of-type(2) > div {
+  width: 100% !important;
+  max-width: none !important;
+  padding: 0 !important;
+}
+
+.public-app-canvas main > section:nth-of-type(2) > div > div {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+
+.public-app-canvas main > section:nth-of-type(2) button {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(108, 52, 132, 0.09) !important;
+  border-radius: 16px !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  box-shadow: 0 7px 18px rgba(57, 21, 72, 0.055) !important;
+  transform: none !important;
+}
+
+.public-app-canvas main > section:nth-of-type(2) button > div:first-child {
+  background: #f3edf5 !important;
+}
+
+.public-app-canvas main > section:nth-of-type(2) button > div:first-child > span {
+  top: 8px !important;
+  left: 8px !important;
+  padding: 5px 8px !important;
+  font-size: 9px !important;
+}
+
+.public-app-canvas main > section:nth-of-type(2) button > div:last-child {
+  padding: 10px !important;
+}
+
+.public-app-canvas main > section:nth-of-type(2) button > div:last-child > p:first-child {
+  font-size: 9px !important;
+  letter-spacing: 0.1em !important;
+}
+
+.public-app-canvas main > section:nth-of-type(2) h2 {
+  min-height: 36px;
+  margin-top: 5px !important;
+  color: #2e1836;
+  font-size: 13px !important;
+  line-height: 1.35 !important;
+}
+
+.public-app-canvas main > section:nth-of-type(2) h2 + p {
+  margin-top: 7px !important;
+  color: #341342;
+  font-size: 16px !important;
+}
+
+.public-app-canvas main > section:nth-of-type(2) button > div:last-child > p:last-child {
+  margin-top: 5px !important;
+  color: #85758b !important;
+  font-size: 10px !important;
+}
+
+/* Product/cart sheet thật sự chiếm đúng khung app, header rõ và nội dung không bị nav che. */
+.public-app-canvas [role="dialog"] {
+  right: auto !important;
+  left: 50% !important;
+  width: min(100vw, var(--app-width)) !important;
+  transform: translateX(-50%);
+}
+
+.public-app-canvas [role="dialog"] > div,
+.public-app-canvas [role="dialog"] > aside {
+  width: 100% !important;
+  max-width: none !important;
+  max-height: 100dvh !important;
+  border-radius: 0 !important;
+}
+
+.network-banner {
+  top: calc(8px + var(--safe-top));
+  width: min(calc(100vw - 24px), 456px);
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+}
+
+@media (min-width: 481px) {
+  .public-app-shell {
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 60px rgba(8, 2, 12, 0.36);
+  }
+}
+
+@media (max-width: 360px) {
+  .public-app-canvas main > section:first-of-type {
+    margin-right: 8px !important;
+    margin-left: 8px !important;
+  }
+
+  .public-app-canvas main > section:nth-of-type(2) {
+    padding-right: 8px !important;
+    padding-left: 8px !important;
+  }
+}
