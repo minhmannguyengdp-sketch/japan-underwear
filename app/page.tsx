@@ -1,5 +1,4 @@
 import { CatalogOrdering } from "@/components/catalog-ordering-v2";
-import { CustomerAccountShortcut } from "@/components/customer-account-shortcut";
 import { listCatalogProducts } from "@/lib/catalog";
 import type { CatalogProduct } from "@/lib/catalog-types";
 
@@ -24,33 +23,17 @@ async function loadCatalogPage(): Promise<CatalogPageResult> {
 
 function StateCard({ failed }: { failed: boolean }) {
   return (
-    <main className="grid min-h-screen place-items-center bg-[#f7f5fa] px-5 py-12 text-ink-950">
-      <section className="w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-purple-900/10">
-        <div className="border-b border-slate-100 p-6 sm:p-8">
-          <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-xl bg-tt-purple-700 text-sm font-black text-white">TT</div>
-            <div>
-              <p className="font-black">Tuấn Thủy</p>
-              <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Catalog PostgreSQL + R2</p>
-            </div>
-          </div>
-          <p className={`mt-8 text-xs font-black uppercase tracking-[0.16em] ${failed ? "text-winking-red" : "text-tt-purple-700"}`}>
-            {failed ? "Lỗi kết nối dữ liệu" : "Catalog chưa được nạp"}
-          </p>
-          <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
-            {failed ? "Không đọc được PostgreSQL." : "Database vẫn đang có 0 model."}
-          </h1>
-          <p className="mt-4 max-w-xl leading-7 text-slate-600">
-            {failed
-              ? "Dev server chưa thể kết nối hoặc schema order variant chưa được migrate. Xem lỗi cụ thể trong terminal."
-              : "Bản mới tự migrate schema catalog trước khi mở dev server. Trạng thái này thường nghĩa là process cũ vẫn đang chạy."}
-          </p>
-        </div>
-        <div className="bg-[#fbfaff] p-6 sm:p-8">
-          <p className="text-sm font-black">Dừng process cũ, cập nhật code rồi chạy:</p>
-          <pre className="mt-3 overflow-x-auto rounded-2xl bg-ink-950 p-4 text-sm leading-7 text-white"><code>{`git pull --ff-only origin main\nnpm run dev`}</code></pre>
-        </div>
-      </section>
+    <main className="app-state-page">
+      <img src="/brand/pensee-logo.png" alt="" className="app-state-logo" />
+      <p className={`app-state-kicker ${failed ? "is-error" : ""}`}>
+        {failed ? "Lỗi kết nối dữ liệu" : "Catalog chưa được nạp"}
+      </p>
+      <h1>{failed ? "Không đọc được PostgreSQL." : "Database vẫn đang có 0 model."}</h1>
+      <p>
+        {failed
+          ? "Ứng dụng chưa thể kết nối dữ liệu. Hãy kiểm tra server rồi thử lại."
+          : "Catalog chưa có sản phẩm active để hiển thị."}
+      </p>
     </main>
   );
 }
@@ -59,10 +42,5 @@ export default async function HomePage() {
   const result = await loadCatalogPage();
   if (result.failed) return <StateCard failed />;
   if (result.products.length === 0) return <StateCard failed={false} />;
-  return (
-    <>
-      <CustomerAccountShortcut />
-      <CatalogOrdering products={result.products} />
-    </>
-  );
+  return <CatalogOrdering products={result.products} />;
 }
