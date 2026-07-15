@@ -14,6 +14,7 @@
     { "idx": 9, "version": "7", "when": 1783885000000, "tag": "0009_phase6_checkout_onboarding", "breakpoints": true },
     { "idx": 10, "version": "7", "when": 1783890000000, "tag": "0010_order_processing_lifecycle", "breakpoints": true },
     { "idx": 11, "version": "7", "when": 1783895000000, "tag": "0011_manual_order_shared_service", "breakpoints": true },
-    { "idx": 12, "version": "7", "when": 1783900000000, "tag": "0012_catalog_price_management", "breakpoints": true }
+    { "idx": 12, "version": "7", "when": 1783900000000, "tag": "0012_catalog_price_management", "breakpoints": true },
+    { "idx": 13, "version": "7", "when": 1783905000000, "tag": "0013_color_variant_availability", "breakpoints": true }
   ]
 }
