@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth, signIn } from "@/auth";
@@ -29,10 +30,10 @@ export default async function SignInPage({
     <main className="customer-signin-page">
       <section className="signin-brand-panel">
         <div className="signin-brand-panel__art" aria-hidden="true" />
-        <img src="/brand/pensee-logo.png" alt="Pensee" />
+        <img src="/brand/pensee-logo-transparent.svg" alt="Pensee" />
         <span>Tuấn Thủy · Đặt hàng sỉ</span>
-        <h1>Đăng nhập để đặt và theo dõi đơn.</h1>
-        <p>Hồ sơ cửa hàng, giỏ hàng và lịch sử đơn được lưu an toàn theo tài khoản.</p>
+        <h1>Chào mừng bạn trở lại.</h1>
+        <p>Đăng nhập để lưu hồ sơ cửa hàng, đặt sản phẩm và theo dõi đúng đơn của mình.</p>
       </section>
 
       <section className="signin-card">
@@ -53,11 +54,12 @@ export default async function SignInPage({
           }}
         >
           <button type="submit" className="signin-google-button">
-            <span>G</span>
+            <span aria-hidden="true">G</span>
             Đăng nhập bằng Google
           </button>
         </form>
         <small>Ứng dụng chỉ dùng thông tin tài khoản để xác thực và gắn đúng đơn hàng.</small>
+        <Link href="/" className="signin-back-link">← Trở về trang chủ</Link>
       </section>
     </main>
   );
