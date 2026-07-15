@@ -39,6 +39,7 @@ Bỏ nội dung quảng cáo dài, câu lặp và lời kêu gọi mua hàng.
 - Không cập nhật `product_variants`.
 - Import Excel chỉ cập nhật màu và `short_description` của sản phẩm khớp catalog active.
 - Import bổ sung của chủ catalog chỉ cập nhật màu của đúng bốn mã; tuyệt đối không cập nhật mô tả.
+- Bốn mã bổ sung được khóa cứng đúng identity và đúng tổng 12 màu.
 - Nếu PostgreSQL có màu active ngoài bộ màu đầy đủ của nguồn tương ứng, importer dừng để review và không tự xóa.
 - Snapshot toàn bộ variant được so sánh trước và sau transaction.
 
