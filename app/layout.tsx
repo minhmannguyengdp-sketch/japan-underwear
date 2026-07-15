@@ -6,6 +6,7 @@ import { PwaRuntime } from "@/components/app-shell/pwa-runtime";
 
 import "./globals.css";
 import "./mobile-shell-polish.css";
+import "./welcome-screen.css";
 
 export const metadata: Metadata = {
   title: {
