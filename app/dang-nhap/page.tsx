@@ -30,7 +30,7 @@ export default async function SignInPage({
     <main className="customer-signin-page">
       <section className="signin-brand-panel">
         <div className="signin-brand-panel__art" aria-hidden="true" />
-        <img src="/brand/pensee-logo-transparent.svg" alt="Pensee" />
+        <img src="/brand/pensee-logo.png" alt="Pensee" />
         <span>Tuấn Thủy · Đặt hàng sỉ</span>
         <h1>Chào mừng bạn trở lại.</h1>
         <p>Đăng nhập để lưu hồ sơ cửa hàng, đặt sản phẩm và theo dõi đúng đơn của mình.</p>
