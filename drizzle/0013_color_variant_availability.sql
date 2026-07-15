@@ -61,7 +61,7 @@ BEGIN
      OR NEW."product_id" IS DISTINCT FROM variant_product_id THEN
     RAISE EXCEPTION USING
       ERRCODE = '23514',
-      CONSTRAINT = 'product_color_variants_identity_chk',
+      CONSTRAINT = 'orderable_color_variant_selection_chk',
       MESSAGE = 'Màu và size/cup phải thuộc cùng sản phẩm.';
   END IF;
 
