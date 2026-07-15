@@ -18,7 +18,7 @@ Quy trình dùng hai nguồn có phạm vi rõ ràng, không trộn bằng chứ
    - tổng 4 mẫu / 12 màu;
    - không có nguồn mô tả nên không cập nhật `short_description` cho bốn mã này.
 
-Sau khi ghép theo đúng nguồn, baseline 30 mã áo ngực có size/cup nhưng thiếu màu được phủ đủ 30/30. Tổng dữ liệu màu dùng cho hai luồng là 332 màu: 320 từ Excel và 12 từ xác nhận của chủ catalog.
+Sau khi ghép đúng nguồn, baseline 30 mã áo ngực có size/cup nhưng thiếu màu được phủ đủ 30/30. Tổng dữ liệu màu dùng cho hai luồng là 332 màu: 320 từ Excel và 12 từ xác nhận của chủ catalog.
 
 ## Quy tắc mô tả trong app
 
@@ -40,16 +40,19 @@ Bỏ nội dung quảng cáo dài, câu lặp và lời kêu gọi mua hàng.
 - Import Excel chỉ cập nhật màu và `short_description` của sản phẩm khớp catalog active.
 - Import bổ sung của chủ catalog chỉ cập nhật màu của đúng bốn mã; tuyệt đối không cập nhật mô tả.
 - Bốn mã bổ sung được khóa cứng đúng identity và đúng tổng 12 màu.
-- Nếu PostgreSQL có màu active ngoài bộ màu đầy đủ của nguồn tương ứng, importer dừng để review và không tự xóa.
-- Snapshot toàn bộ variant được so sánh trước và sau transaction.
+- Nếu PostgreSQL có màu active ngoài bộ màu đầy đủ của supplier, importer dừng để review.
+- Màu ngoài supplier chỉ được chuyển sang `inactive` qua manifest reconciliation đã duyệt; không xóa bản ghi.
+- Manifest reconciliation khóa SHA-256 của supplier manifest và conflict audit.
+- Snapshot toàn bộ variant được so sánh trước và sau mỗi transaction.
 
 ## File local
 
-Lưu ba file sau trong `data/local/`:
+Lưu các file sau trong `data/local/`:
 
 - `BẢNG MÔ TẢ SẢN PHẨM1.xlsx`
 - `tuan-thuy-supplier-product-data-2026-07-15.json`
 - `tuan-thuy-owner-color-supplement-2026-07-15.json`
+- `tuan-thuy-supplier-color-conflicts.json` — sinh từ PostgreSQL, chỉ đọc.
 
 ## 1. Xác minh nguồn Excel
 
@@ -72,7 +75,97 @@ npm run catalog:supplier:import -- `
   ".\data\local\BẢNG MÔ TẢ SẢN PHẨM1.xlsx"
 ```
 
-## 3. Xác minh bổ sung bốn mã
+Nếu có màu active ngoài danh sách supplier, importer dừng. Không chạy `--apply`.
+
+## 3. Audit xung đột màu
+
+```powershell
+cd F:\1_A_Disk_D\TT\japan-underwear
+
+npm run catalog:supplier:conflicts -- `
+  ".\data\local\tuan-thuy-supplier-product-data-2026-07-15.json" `
+  ".\data\local\tuan-thuy-supplier-color-conflicts.json"
+```
+
+Baseline audit ngày 2026-07-15:
+
+- 57 supplier products khớp catalog active;
+- 7 sản phẩm có màu active ngoài supplier;
+- 10 màu cần chuyển `inactive`;
+- 175 màu supplier còn thiếu trong PostgreSQL.
+
+## 4. Tạo review reconciliation
+
+```powershell
+cd F:\1_A_Disk_D\TT\japan-underwear
+
+npm run catalog:supplier:reconcile:build -- `
+  ".\data\local\tuan-thuy-supplier-product-data-2026-07-15.json" `
+  ".\data\local\tuan-thuy-supplier-color-conflicts.json" `
+  ".\data\local\tuan-thuy-supplier-color-reconciliation.review.json"
+```
+
+Review phải ghi đúng 7 sản phẩm / 10 màu. Chưa ghi PostgreSQL.
+
+## 5. Chủ catalog duyệt reconciliation
+
+```powershell
+cd F:\1_A_Disk_D\TT\japan-underwear
+
+npm run catalog:supplier:reconcile:approve -- `
+  ".\data\local\tuan-thuy-supplier-color-reconciliation.review.json" `
+  --approve
+```
+
+File mặc định:
+
+`data/local/tuan-thuy-supplier-color-reconciliation.review.approved.json`
+
+## 6. Validate và dry run reconciliation
+
+```powershell
+cd F:\1_A_Disk_D\TT\japan-underwear
+
+npm run catalog:supplier:reconcile:import -- `
+  ".\data\local\tuan-thuy-supplier-color-reconciliation.review.approved.json" `
+  --validate-only
+
+npm run catalog:supplier:reconcile:import -- `
+  ".\data\local\tuan-thuy-supplier-color-reconciliation.review.approved.json"
+```
+
+Dry run phải xác nhận đúng 10 màu active hiện tại khớp manifest đã duyệt.
+
+## 7. Apply reconciliation
+
+```powershell
+cd F:\1_A_Disk_D\TT\japan-underwear
+
+npm run catalog:supplier:reconcile:import -- `
+  ".\data\local\tuan-thuy-supplier-color-reconciliation.review.approved.json" `
+  --apply
+```
+
+Transaction này chỉ đặt `product_colors.is_active=false` cho đúng 10 màu. Không xóa bản ghi và không thay đổi sản phẩm, mô tả, giá hoặc variant.
+
+## 8. Chạy lại supplier dry run và apply
+
+Sau reconciliation, supplier dry run phải báo `Unexpected active colors: 0`.
+
+```powershell
+cd F:\1_A_Disk_D\TT\japan-underwear
+
+npm run catalog:supplier:import -- `
+  ".\data\local\tuan-thuy-supplier-product-data-2026-07-15.json" `
+  ".\data\local\BẢNG MÔ TẢ SẢN PHẨM1.xlsx"
+
+npm run catalog:supplier:import -- `
+  ".\data\local\tuan-thuy-supplier-product-data-2026-07-15.json" `
+  ".\data\local\BẢNG MÔ TẢ SẢN PHẨM1.xlsx" `
+  --apply
+```
+
+## 9. Xác minh, dry run và apply bổ sung bốn mã
 
 ```powershell
 cd F:\1_A_Disk_D\TT\japan-underwear
@@ -80,39 +173,18 @@ cd F:\1_A_Disk_D\TT\japan-underwear
 npm run catalog:owner-color:validate -- `
   ".\data\local\tuan-thuy-owner-color-supplement-2026-07-15.json" `
   --validate-only
-```
-
-## 4. Dry run bổ sung bốn mã
-
-```powershell
-cd F:\1_A_Disk_D\TT\japan-underwear
 
 npm run catalog:owner-color:import -- `
   ".\data\local\tuan-thuy-owner-color-supplement-2026-07-15.json"
-```
-
-Cả hai dry run phải báo không có màu active ngoài danh sách nguồn.
-
-## 5. Apply theo thứ tự nguồn
-
-Mỗi nguồn có transaction và bản ghi audit riêng. Chạy Excel trước, sau đó mới chạy bổ sung bốn mã:
-
-```powershell
-cd F:\1_A_Disk_D\TT\japan-underwear
-
-npm run catalog:supplier:import -- `
-  ".\data\local\tuan-thuy-supplier-product-data-2026-07-15.json" `
-  ".\data\local\BẢNG MÔ TẢ SẢN PHẨM1.xlsx" `
-  --apply
 
 npm run catalog:owner-color:import -- `
   ".\data\local\tuan-thuy-owner-color-supplement-2026-07-15.json" `
   --apply
 ```
 
-Nếu luồng Excel thất bại thì dừng, không chạy bổ sung bốn mã.
+Nếu supplier apply thất bại thì dừng, không chạy bổ sung bốn mã.
 
-## 6. Hậu kiểm
+## 10. Hậu kiểm
 
 ```powershell
 cd F:\1_A_Disk_D\TT\japan-underwear
@@ -128,6 +200,7 @@ Kiểm tra thật:
 - 108 model không đổi;
 - 199 size/cup không đổi;
 - 30 mã mục tiêu có màu đầy đủ;
+- 10 màu cũ ngoài supplier không còn active nhưng bản ghi vẫn tồn tại;
 - mô tả rút gọn chỉ xuất hiện ở 71 mẫu có nguồn Excel;
 - bốn mã bổ sung không bị ghi mô tả giả;
 - chọn màu + size/cup và thêm giỏ thành công;
