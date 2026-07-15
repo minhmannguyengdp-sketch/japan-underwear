@@ -20,7 +20,7 @@ export function AdminAppShell({ children }: { children: ReactNode }) {
         <header className="admin-app-header">
           <Link href="/admin" className="admin-brand">
             <span className="admin-brand-logo">
-              <img src="/brand/pensee-logo.png" alt="" />
+              <img src="/brand/pensee-logo-transparent.svg" alt="" />
             </span>
             <span>
               <strong>Tuấn Thủy</strong>
