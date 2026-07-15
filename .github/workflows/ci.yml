@@ -60,6 +60,9 @@ jobs:
       - name: Verify supplier product data workflow
         run: npm run catalog:supplier:verify
 
+      - name: Verify owner color supplement workflow
+        run: npm run catalog:owner-color:verify
+
       - name: Lint
         shell: bash
         run: |
