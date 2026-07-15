@@ -24,6 +24,11 @@ type CheckoutForm = {
 
 type LocationState = "idle" | "loading" | "ready" | "error";
 
+type CatalogOrderingProps = {
+  products: CatalogProduct[];
+  initialProductId?: string | null;
+};
+
 const EMPTY_CART: ServerCart = {
   items: [],
   quantity: 0,
@@ -77,11 +82,19 @@ async function readJson<T>(response: Response): Promise<T> {
   return body;
 }
 
-export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
+export function CatalogOrdering({
+  products,
+  initialProductId = null,
+}: CatalogOrderingProps) {
+  const initialSelection =
+    initialProductId && products.some((product) => product.id === initialProductId)
+      ? initialProductId
+      : null;
+
   const [search, setSearch] = useState("");
   const [brand, setBrand] = useState("");
   const [category, setCategory] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelection);
   const [imageIndex, setImageIndex] = useState(0);
   const [rows, setRows] = useState<SelectionRow[]>([makeRow(1)]);
   const [nextRow, setNextRow] = useState(2);
@@ -110,7 +123,9 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
         if (!cancelled) setCart(body.cart);
       } catch (loadError) {
         if (!cancelled) {
-          setCheckoutError(loadError instanceof Error ? loadError.message : "Không đọc được giỏ hàng.");
+          setCheckoutError(
+            loadError instanceof Error ? loadError.message : "Không đọc được giỏ hàng.",
+          );
         }
       } finally {
         if (!cancelled) setCartLoading(false);
@@ -316,7 +331,9 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
       setLocationState("idle");
       setLocationMessage("");
     } catch (orderError) {
-      setCheckoutError(orderError instanceof Error ? orderError.message : "Không tạo được đơn hàng.");
+      setCheckoutError(
+        orderError instanceof Error ? orderError.message : "Không tạo được đơn hàng.",
+      );
     } finally {
       setCartBusy(false);
     }
@@ -326,19 +343,24 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
     <main className="customer-shop">
       <section className="shop-heading">
         <div>
-          <span className="customer-kicker">Catalog bán sỉ</span>
-          <h1>Chọn mẫu phù hợp</h1>
+          <span className="customer-kicker">Pensee · Winking</span>
+          <h1>Sản phẩm</h1>
           <p>{orderableCount}/{products.length} model đang có thể đặt hàng.</p>
         </div>
         <button type="button" className="shop-cart-button" onClick={() => setCartOpen(true)}>
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4h2l2 11h10l3-8H6M9 20h.01M17 20h.01" /></svg>
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M3 4h2l2 11h10l3-8H6M9 20h.01M17 20h.01" />
+          </svg>
           <span>{cartLoading ? "…" : cart.quantity}</span>
         </button>
       </section>
 
       <section className="shop-controls" aria-label="Tìm và lọc sản phẩm">
         <label className="shop-search">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-4-4" />
+          </svg>
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -348,11 +370,15 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
         <div className="shop-filter-row">
           <select value={brand} onChange={(event) => setBrand(event.target.value)} aria-label="Lọc thương hiệu">
             <option value="">Tất cả thương hiệu</option>
-            {brandOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            {brandOptions.map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
           </select>
           <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Lọc nhóm hàng">
             <option value="">Tất cả nhóm hàng</option>
-            {categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            {categoryOptions.map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
           </select>
         </div>
       </section>
@@ -377,11 +403,16 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
             {visible.map((product) => {
               const cover = coverFor(product);
               return (
-                <button key={product.id} type="button" onClick={() => openProduct(product)} className="shop-product-card">
+                <button
+                  key={product.id}
+                  type="button"
+                  onClick={() => openProduct(product)}
+                  className="shop-product-card"
+                >
                   <div className="shop-product-card__image">
                     {cover?.src ? <img src={cover.src} alt={cover.alt} /> : <span>Chưa có ảnh</span>}
                     <em className={product.orderable ? "is-ready" : "is-waiting"}>
-                      {product.orderable ? "Đặt được" : "Chờ dữ liệu"}
+                      {product.orderable ? "Có thể đặt" : "Chờ dữ liệu"}
                     </em>
                   </div>
                   <div className="shop-product-card__body">
@@ -403,8 +434,14 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
             <header className="customer-sheet__header">
               <button type="button" onClick={() => setSelectedId(null)} aria-label="Đóng chi tiết">←</button>
               <div><small>{selected.brand} · {selected.code}</small><strong>Chi tiết sản phẩm</strong></div>
-              <button type="button" onClick={() => { setSelectedId(null); setCartOpen(true); }} aria-label="Mở giỏ hàng" className="sheet-cart-icon">
-                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4h2l2 11h10l3-8H6" /></svg><span>{cart.quantity}</span>
+              <button
+                type="button"
+                onClick={() => { setSelectedId(null); setCartOpen(true); }}
+                aria-label="Mở giỏ hàng"
+                className="sheet-cart-icon"
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4h2l2 11h10l3-8H6" /></svg>
+                <span>{cart.quantity}</span>
               </button>
             </header>
 
@@ -418,7 +455,12 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
                 {selected.images.length > 1 && (
                   <div className="product-gallery__thumbs no-scrollbar">
                     {selected.images.map((image, index) => (
-                      <button key={image.id} type="button" className={index === imageIndex ? "is-active" : undefined} onClick={() => setImageIndex(index)}>
+                      <button
+                        key={image.id}
+                        type="button"
+                        className={index === imageIndex ? "is-active" : undefined}
+                        onClick={() => setImageIndex(index)}
+                      >
                         {image.src ? <img src={image.src} alt="" /> : null}
                       </button>
                     ))}
@@ -451,7 +493,7 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
                   <div className="product-selection__rows">
                     {rows.map((row, index) => (
                       <article key={row.id} className="selection-row">
-                        <header><strong>Dòng {index + 1}</strong><button type="button" onClick={() => removeRow(row.id)}>Xóa</button></header>
+                        <header><strong>Lựa chọn {index + 1}</strong><button type="button" onClick={() => removeRow(row.id)}>Xóa</button></header>
                         <select value={row.colorId} onChange={(event) => updateRow(row.id, { colorId: event.target.value })}>
                           <option value="">Chọn màu</option>
                           {selected.colors.map((color) => <option key={color.id} value={color.id}>{color.label}</option>)}
@@ -464,8 +506,15 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
                       </article>
                     ))}
                   </div>
-                  <button type="button" className="add-selection-row" onClick={() => { setRows((current) => [...current, makeRow(nextRow)]); setNextRow((value) => value + 1); }}>
-                    + Thêm dòng đặt hàng
+                  <button
+                    type="button"
+                    className="add-selection-row"
+                    onClick={() => {
+                      setRows((current) => [...current, makeRow(nextRow)]);
+                      setNextRow((value) => value + 1);
+                    }}
+                  >
+                    + Thêm lựa chọn
                   </button>
                 </section>
               )}
@@ -487,8 +536,8 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
           <div className="customer-sheet cart-sheet">
             <header className="customer-sheet__header">
               <button type="button" onClick={() => setCartOpen(false)} aria-label="Đóng giỏ hàng">←</button>
-              <div><small>Giỏ hàng server</small><strong>{createdOrder ? "Đặt hàng thành công" : `${cart.quantity} sản phẩm`}</strong></div>
-              <span className="cart-sheet__step">{createdOrder ? "Xong" : "Checkout"}</span>
+              <div><small>Giỏ hàng</small><strong>{createdOrder ? "Đặt hàng thành công" : `${cart.quantity} sản phẩm`}</strong></div>
+              <span className="cart-sheet__step">{createdOrder ? "Xong" : "Thanh toán"}</span>
             </header>
 
             <div className="customer-sheet__body cart-sheet__body">
@@ -500,13 +549,17 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
                   <p>{createdOrder.itemCount} sản phẩm · {formatVnd(createdOrder.subtotal)}</p>
                   <div className="order-success__actions">
                     <Link href={`/don-hang/${encodeURIComponent(createdOrder.orderCode)}`}>Xem chi tiết đơn</Link>
-                    <button type="button" onClick={() => { setCreatedOrder(null); setCartOpen(false); }}>Tiếp tục mua hàng</button>
+                    <button type="button" onClick={() => { setCreatedOrder(null); setCartOpen(false); }}>Tiếp tục xem sản phẩm</button>
                   </div>
                 </section>
               ) : cart.items.length === 0 ? (
                 <section className="cart-empty">
-                  <div>🛍️</div><h2>Giỏ hàng đang trống</h2><p>Chọn sản phẩm, màu và size/cup để bắt đầu đơn sỉ.</p>
-                  <button type="button" onClick={() => setCartOpen(false)}>Quay lại cửa hàng</button>
+                  <span className="cart-empty__icon">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5.5h14v15H5zM8 5.5a4 4 0 0 1 8 0" /></svg>
+                  </span>
+                  <h2>Giỏ hàng đang trống</h2>
+                  <p>Chọn sản phẩm, màu và size/cup để bắt đầu đơn sỉ.</p>
+                  <button type="button" onClick={() => setCartOpen(false)}>Quay lại sản phẩm</button>
                 </section>
               ) : (
                 <>
@@ -531,7 +584,7 @@ export function CatalogOrdering({ products }: { products: CatalogProduct[] }) {
                   </section>
 
                   <form id="customer-checkout-form" onSubmit={submitOrder} className="checkout-form">
-                    <div className="cart-section-heading"><span>Thông tin checkout</span><strong>Bước cuối</strong></div>
+                    <div className="cart-section-heading"><span>Thông tin đặt hàng</span><strong>Bước cuối</strong></div>
                     <Link href="/tai-khoan" className="checkout-profile-link">
                       <div><small>Thông tin giao hàng</small><strong>Dùng hồ sơ đã lưu trên server</strong></div><span>Kiểm tra →</span>
                     </Link>
