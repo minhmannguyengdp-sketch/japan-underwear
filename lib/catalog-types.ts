@@ -13,6 +13,7 @@ export type CatalogColor = {
   label: string;
   swatch: string | null;
   sortOrder: number;
+  variantIds: string[];
 };
 
 export type CatalogVariant = {
@@ -40,7 +41,7 @@ export type CatalogProduct = {
   colors: CatalogColor[];
   variants: CatalogVariant[];
   orderable: boolean;
-  orderingBlocker: "missing-color" | "missing-size-cup" | null;
+  orderingBlocker: "missing-color" | "missing-size-cup" | "missing-color-size-link" | null;
 };
 
 export type CatalogQuery = {
