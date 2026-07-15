@@ -24,12 +24,23 @@ const navItems: NavItem[] = [
   },
   {
     href: "/cua-hang",
-    label: "Cửa hàng",
+    label: "Sản phẩm",
     match: (pathname) => pathname.startsWith("/cua-hang"),
     icon: (
       <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M4 9h16l-1-5H5L4 9Z" />
-        <path d="M5 9v11h14V9M9 20v-6h6v6" />
+        <path d="M5 5.5h14v15H5z" />
+        <path d="M8 5.5a4 4 0 0 1 8 0M8 10h.01M16 10h.01" />
+      </svg>
+    ),
+  },
+  {
+    href: "/su-kien",
+    label: "Sự kiện",
+    match: (pathname) => pathname.startsWith("/su-kien"),
+    icon: (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M5 4h14v16H5zM8 2v4M16 2v4M5 9h14" />
+        <path d="m9 14 2 2 4-4" />
       </svg>
     ),
   },
@@ -56,10 +67,32 @@ const navItems: NavItem[] = [
   },
 ];
 
-const routeTitles: Array<{ match: (pathname: string) => boolean; title: string; subtitle: string }> = [
-  { match: (pathname) => pathname.startsWith("/cua-hang"), title: "Cửa hàng", subtitle: "Pensee · Winking" },
-  { match: (pathname) => pathname.startsWith("/don-hang"), title: "Đơn hàng", subtitle: "Theo dõi đơn sỉ" },
-  { match: (pathname) => pathname.startsWith("/tai-khoan") || pathname.startsWith("/dang-nhap"), title: "Tài khoản", subtitle: "Hồ sơ đặt hàng" },
+const routeTitles: Array<{
+  match: (pathname: string) => boolean;
+  title: string;
+  subtitle: string;
+}> = [
+  {
+    match: (pathname) => pathname.startsWith("/cua-hang"),
+    title: "Sản phẩm",
+    subtitle: "Pensee · Winking",
+  },
+  {
+    match: (pathname) => pathname.startsWith("/su-kien"),
+    title: "Sự kiện",
+    subtitle: "Thông tin mới nhất",
+  },
+  {
+    match: (pathname) => pathname.startsWith("/don-hang"),
+    title: "Đơn hàng",
+    subtitle: "Theo dõi đơn sỉ",
+  },
+  {
+    match: (pathname) =>
+      pathname.startsWith("/tai-khoan") || pathname.startsWith("/dang-nhap"),
+    title: "Tài khoản",
+    subtitle: "Hồ sơ đặt hàng",
+  },
   { match: () => true, title: "Tuấn Thủy", subtitle: "Đặt hàng sỉ" },
 ];
 
@@ -76,7 +109,8 @@ export function AppShellBoundary({ children }: { children: ReactNode }) {
     );
   }
 
-  const routeTitle = routeTitles.find((item) => item.match(pathname)) ?? routeTitles[routeTitles.length - 1];
+  const routeTitle =
+    routeTitles.find((item) => item.match(pathname)) ?? routeTitles[routeTitles.length - 1];
 
   return (
     <div className="app-stage">
@@ -84,7 +118,7 @@ export function AppShellBoundary({ children }: { children: ReactNode }) {
         <header className="public-app-header">
           <Link href="/" className="public-brand" aria-label="Về trang chủ Tuấn Thủy">
             <span className="public-brand-logo">
-              <img src="/brand/pensee-logo.png" alt="" />
+              <img src="/brand/pensee-logo-transparent.svg" alt="" />
             </span>
             <span className="public-brand-copy">
               <strong>{routeTitle.title}</strong>
