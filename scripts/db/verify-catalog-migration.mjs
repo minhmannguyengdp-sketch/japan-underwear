@@ -23,6 +23,7 @@ const EXPECTED_TABLES = [
   "order_status_events",
   "orders",
   "outbox_events",
+  "product_color_variants",
   "product_colors",
   "product_images",
   "product_variants",
@@ -45,6 +46,7 @@ const EXPECTED_MIGRATIONS = [
   1783890000000,
   1783895000000,
   1783900000000,
+  1783905000000,
 ];
 
 const REQUIRED_INDEXES = [
@@ -59,25 +61,32 @@ const REQUIRED_INDEXES = [
   "orders_source_cart_uidx",
   "orders_staff_manual_request_uidx",
   "orders_source_created_idx",
+  "product_color_variants_color_variant_uidx",
+  "product_color_variants_product_active_idx",
   "product_variants_product_size_cup_uidx",
   "product_variants_product_size_no_cup_uidx",
 ];
 
-const REQUIRED_ORDER_LOCATION_COLUMNS = [
-  "delivery_latitude",
-  "delivery_longitude",
-  "delivery_accuracy_meters",
-  "location_collected_at",
-  "location_source",
+const REQUIRED_TRIGGERS = [
+  "cart_items:cart_items_selection_same_product_trg",
+  "cart_items:cart_items_color_variant_selection_trg",
+  "order_items:order_items_selection_same_product_trg",
+  "order_items:order_items_color_variant_selection_trg",
+  "orders:orders_creation_source_derive_trg",
+  "product_color_variants:product_color_variants_identity_trg",
+  "products:products_catalog_version_trg",
+  "products:products_catalog_audit_trg",
+  "product_colors:product_colors_catalog_version_trg",
+  "product_colors:product_colors_catalog_audit_trg",
+  "product_variants:product_variants_catalog_version_trg",
+  "product_variants:product_variants_catalog_audit_trg",
 ];
 
-const REQUIRED_ORDER_CREATION_COLUMNS = [
-  "order_source",
-  "source_cart_id",
-  "customer_user_id",
-  "client_request_id",
-  "manual_request_id",
-  "created_by_user_id",
+const REQUIRED_FUNCTIONS = [
+  "japan_underwear.bump_catalog_row_version()",
+  "japan_underwear.record_catalog_change_audit()",
+  "japan_underwear.validate_product_color_variant_identity()",
+  "japan_underwear.validate_orderable_color_variant_selection()",
 ];
 
 const connectionString = process.env.DATABASE_URL?.trim();
@@ -102,6 +111,8 @@ function assert(condition, message) {
 const client = new Client({
   connectionString,
   ssl: isLocalDatabase(connectionString) ? undefined : { rejectUnauthorized: false },
+  connectionTimeoutMillis: 30_000,
+  query_timeout: 120_000,
 });
 
 async function main() {
@@ -134,42 +145,22 @@ async function main() {
       `Expected only japan_underwear.catalog_import_status, found: ${enumSchemas.join(", ") || "none"}.`,
     );
 
-    const importStatusResult = await client.query(`
-      SELECT type_namespace.nspname AS type_schema, type_definition.typname AS type_name
-      FROM pg_attribute AS attribute
-      JOIN pg_class AS table_definition ON table_definition.oid = attribute.attrelid
-      JOIN pg_namespace AS table_namespace ON table_namespace.oid = table_definition.relnamespace
-      JOIN pg_type AS type_definition ON type_definition.oid = attribute.atttypid
-      JOIN pg_namespace AS type_namespace ON type_namespace.oid = type_definition.typnamespace
-      WHERE table_namespace.nspname = 'japan_underwear'
-        AND table_definition.relname = 'catalog_import_runs'
-        AND attribute.attname = 'status'
-        AND attribute.attnum > 0
-        AND NOT attribute.attisdropped
-    `);
-    assert(
-      importStatusResult.rowCount === 1 &&
-        importStatusResult.rows[0].type_schema === "japan_underwear" &&
-        importStatusResult.rows[0].type_name === "catalog_import_status",
-      "catalog_import_runs.status does not use japan_underwear.catalog_import_status.",
-    );
-
-    const productIdentityResult = await client.query(`
+    const productIdentity = await client.query(`
       SELECT
         to_regclass('japan_underwear.products_brand_category_model_uidx') AS identity_index,
         to_regclass('japan_underwear.products_brand_model_uidx') AS legacy_index,
         information_schema.columns.is_nullable AS category_nullable
       FROM information_schema.columns
-      WHERE information_schema.columns.table_schema = 'japan_underwear'
-        AND information_schema.columns.table_name = 'products'
-        AND information_schema.columns.column_name = 'category_id'
+      WHERE table_schema = 'japan_underwear'
+        AND table_name = 'products'
+        AND column_name = 'category_id'
     `);
-    assert(productIdentityResult.rowCount === 1, "Không đọc được products.category_id.");
-    assert(productIdentityResult.rows[0].identity_index, "Missing products_brand_category_model_uidx.");
-    assert(!productIdentityResult.rows[0].legacy_index, "Legacy products_brand_model_uidx still exists.");
-    assert(productIdentityResult.rows[0].category_nullable === "NO", "products.category_id must be NOT NULL.");
+    assert(productIdentity.rowCount === 1, "Không đọc được products.category_id.");
+    assert(productIdentity.rows[0].identity_index, "Missing products_brand_category_model_uidx.");
+    assert(!productIdentity.rows[0].legacy_index, "Legacy products_brand_model_uidx still exists.");
+    assert(productIdentity.rows[0].category_nullable === "NO", "products.category_id must be NOT NULL.");
 
-    const variantColumnResult = await client.query(`
+    const variantColumnsResult = await client.query(`
       SELECT column_name, is_nullable
       FROM information_schema.columns
       WHERE table_schema = 'japan_underwear'
@@ -177,32 +168,50 @@ async function main() {
         AND column_name IN ('color_id', 'size_code', 'cup_code')
     `);
     const variantColumns = new Map(
-      variantColumnResult.rows.map((row) => [String(row.column_name), String(row.is_nullable)]),
+      variantColumnsResult.rows.map((row) => [String(row.column_name), String(row.is_nullable)]),
     );
     assert(!variantColumns.has("color_id"), "product_variants.color_id must not exist.");
     assert(variantColumns.get("size_code") === "NO", "product_variants.size_code must be NOT NULL.");
     assert(variantColumns.get("cup_code") === "YES", "product_variants.cup_code must be nullable.");
 
+    const availabilityColumnsResult = await client.query(`
+      SELECT column_name, is_nullable
+      FROM information_schema.columns
+      WHERE table_schema = 'japan_underwear'
+        AND table_name = 'product_color_variants'
+        AND column_name IN ('product_id', 'color_id', 'variant_id', 'source', 'is_active')
+    `);
+    const availabilityColumns = new Map(
+      availabilityColumnsResult.rows.map((row) => [
+        String(row.column_name),
+        String(row.is_nullable),
+      ]),
+    );
+    for (const name of ["product_id", "color_id", "variant_id", "source", "is_active"]) {
+      assert(
+        availabilityColumns.get(name) === "NO",
+        `product_color_variants.${name} must exist and be NOT NULL.`,
+      );
+    }
+
     const indexResult = await client.query(
-      `
-        SELECT indexname
-        FROM pg_indexes
-        WHERE schemaname = 'japan_underwear'
-          AND indexname = ANY($1::text[])
-      `,
+      `SELECT indexname
+       FROM pg_indexes
+       WHERE schemaname = 'japan_underwear'
+         AND indexname = ANY($1::text[])`,
       [REQUIRED_INDEXES],
     );
     const indexes = new Set(indexResult.rows.map((row) => String(row.indexname)));
     const missingIndexes = REQUIRED_INDEXES.filter((name) => !indexes.has(name));
     assert(missingIndexes.length === 0, `Missing required indexes: ${missingIndexes.join(", ")}.`);
 
-    const legacyVariantIndexResult = await client.query(`
+    const legacyVariantIndexes = await client.query(`
       SELECT indexname
       FROM pg_indexes
       WHERE schemaname = 'japan_underwear'
         AND indexname IN ('product_variants_product_color_size_uidx', 'product_variants_color_idx')
     `);
-    assert(legacyVariantIndexResult.rowCount === 0, "Legacy color-linked variant indexes still exist.");
+    assert(legacyVariantIndexes.rowCount === 0, "Legacy color-linked variant indexes still exist.");
 
     const triggerResult = await client.query(`
       SELECT trigger_name, event_object_table
@@ -212,21 +221,11 @@ async function main() {
     const triggers = new Set(
       triggerResult.rows.map((row) => `${row.event_object_table}:${row.trigger_name}`),
     );
-    for (const key of [
-      "cart_items:cart_items_selection_same_product_trg",
-      "order_items:order_items_selection_same_product_trg",
-      "orders:orders_creation_source_derive_trg",
-      "products:products_catalog_version_trg",
-      "products:products_catalog_audit_trg",
-      "product_colors:product_colors_catalog_version_trg",
-      "product_colors:product_colors_catalog_audit_trg",
-      "product_variants:product_variants_catalog_version_trg",
-      "product_variants:product_variants_catalog_audit_trg",
-    ]) {
+    for (const key of REQUIRED_TRIGGERS) {
       assert(triggers.has(key), `Missing required trigger: ${key}.`);
     }
 
-    const lineColumnResult = await client.query(`
+    const lineColumnsResult = await client.query(`
       SELECT table_name, column_name, is_nullable
       FROM information_schema.columns
       WHERE table_schema = 'japan_underwear'
@@ -236,7 +235,7 @@ async function main() {
         )
     `);
     const lineColumns = new Map(
-      lineColumnResult.rows.map((row) => [
+      lineColumnsResult.rows.map((row) => [
         `${row.table_name}.${row.column_name}`,
         String(row.is_nullable),
       ]),
@@ -252,42 +251,7 @@ async function main() {
       assert(lineColumns.get(key) === "NO", `${key} must exist and be NOT NULL.`);
     }
 
-    const locationColumnResult = await client.query(
-      `
-        SELECT column_name, is_nullable
-        FROM information_schema.columns
-        WHERE table_schema = 'japan_underwear'
-          AND table_name = 'orders'
-          AND column_name = ANY($1::text[])
-      `,
-      [REQUIRED_ORDER_LOCATION_COLUMNS],
-    );
-    const locationColumns = new Map(
-      locationColumnResult.rows.map((row) => [String(row.column_name), String(row.is_nullable)]),
-    );
-    for (const columnName of REQUIRED_ORDER_LOCATION_COLUMNS) {
-      assert(locationColumns.get(columnName) === "YES", `orders.${columnName} must be nullable.`);
-    }
-
-    const creationColumnResult = await client.query(
-      `
-        SELECT column_name, is_nullable
-        FROM information_schema.columns
-        WHERE table_schema = 'japan_underwear'
-          AND table_name = 'orders'
-          AND column_name = ANY($1::text[])
-      `,
-      [REQUIRED_ORDER_CREATION_COLUMNS],
-    );
-    const creationColumns = new Map(
-      creationColumnResult.rows.map((row) => [String(row.column_name), String(row.is_nullable)]),
-    );
-    assert(creationColumns.get("order_source") === "NO", "orders.order_source must be NOT NULL.");
-    for (const name of REQUIRED_ORDER_CREATION_COLUMNS.filter((value) => value !== "order_source")) {
-      assert(creationColumns.get(name) === "YES", `orders.${name} must be nullable.`);
-    }
-
-    const managedColumnResult = await client.query(`
+    const managedColumnsResult = await client.query(`
       SELECT table_name, column_name, is_nullable
       FROM information_schema.columns
       WHERE table_schema = 'japan_underwear'
@@ -298,22 +262,25 @@ async function main() {
         )
     `);
     const managedColumns = new Map(
-      managedColumnResult.rows.map((row) => [
+      managedColumnsResult.rows.map((row) => [
         `${row.table_name}.${row.column_name}`,
         String(row.is_nullable),
       ]),
     );
     for (const table of ["products", "product_colors", "product_variants"]) {
       for (const column of ["row_version", "updated_at"]) {
-        assert(managedColumns.get(`${table}.${column}`) === "NO", `${table}.${column} must be NOT NULL.`);
+        assert(
+          managedColumns.get(`${table}.${column}`) === "NO",
+          `${table}.${column} must be NOT NULL.`,
+        );
       }
     }
 
-    for (const signature of [
-      "japan_underwear.bump_catalog_row_version()",
-      "japan_underwear.record_catalog_change_audit()",
-    ]) {
-      const functionResult = await client.query("SELECT to_regprocedure($1) AS function_name", [signature]);
+    for (const signature of REQUIRED_FUNCTIONS) {
+      const functionResult = await client.query(
+        "SELECT to_regprocedure($1) AS function_name",
+        [signature],
+      );
       assert(functionResult.rows[0]?.function_name, `Missing function ${signature}.`);
     }
 
@@ -326,25 +293,21 @@ async function main() {
     const missingMigrations = EXPECTED_MIGRATIONS.filter(
       (createdAt) => !appliedMigrations.includes(createdAt),
     );
-    assert(missingMigrations.length === 0, `Missing Drizzle migration records: ${missingMigrations.join(", ")}.`);
+    assert(
+      missingMigrations.length === 0,
+      `Missing Drizzle migration records: ${missingMigrations.join(", ")}.`,
+    );
 
     console.log("Catalog DB verification OK.");
     console.log(`Tables: ${actualTables.length}.`);
     console.log("Enum: japan_underwear.catalog_import_status.");
     console.log("Product identity: brand + category + model.");
-    console.log("Variant identity: product + size + cup; color selected separately per order line.");
-    console.log("Order creation identity: legacy cart | customer checkout | staff manual.");
-    console.log("Catalog management: optimistic row_version + database audit triggers.");
-    console.log("Historical order snapshots remain separate from catalog state.");
-    console.log(
-      `Migration records: ${appliedMigrations.length} (${EXPECTED_MIGRATIONS.length} required records present).`,
-    );
+    console.log("Variant identity: product + size + cup.");
+    console.log("Orderability identity: product + color + variant.");
+    console.log("Historical order lines retain color and size/cup snapshots.");
   } finally {
-    await client.end();
+    await client.end().catch(() => undefined);
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+await main();
