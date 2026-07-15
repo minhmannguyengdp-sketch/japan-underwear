@@ -63,6 +63,9 @@ jobs:
       - name: Verify exact supplier color variant workflow
         run: npm run catalog:supplier:variants:verify
 
+      - name: Verify supplier variant reconciliation workflow
+        run: npm run catalog:supplier:variants:reconcile:verify
+
       - name: Verify supplier color reconciliation workflow
         run: npm run catalog:supplier:reconcile:verify
 
