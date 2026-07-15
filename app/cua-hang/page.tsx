@@ -21,23 +21,37 @@ async function loadCatalogPage(): Promise<CatalogPageResult> {
 function StateCard({ failed }: { failed: boolean }) {
   return (
     <main className="app-state-page">
-      <img src="/brand/pensee-logo.png" alt="" className="app-state-logo" />
+      <img src="/brand/pensee-logo-transparent.svg" alt="" className="app-state-logo" />
       <p className={`app-state-kicker ${failed ? "is-error" : ""}`}>
-        {failed ? "Lỗi kết nối dữ liệu" : "Catalog chưa được nạp"}
+        {failed ? "Lỗi kết nối dữ liệu" : "Sản phẩm chưa được nạp"}
       </p>
-      <h1>{failed ? "Không đọc được PostgreSQL." : "Database vẫn đang có 0 model."}</h1>
+      <h1>{failed ? "Không đọc được PostgreSQL." : "Chưa có sản phẩm active."}</h1>
       <p>
         {failed
           ? "Ứng dụng chưa thể kết nối dữ liệu. Hãy kiểm tra server rồi thử lại."
-          : "Catalog chưa có sản phẩm active để hiển thị."}
+          : "Danh sách sản phẩm hiện chưa có dữ liệu để hiển thị."}
       </p>
     </main>
   );
 }
 
-export default async function ShopPage() {
+type ShopPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function ShopPage({ searchParams }: ShopPageProps) {
+  const params = await searchParams;
+  const rawProductId = params["san-pham"];
+  const initialProductId = Array.isArray(rawProductId) ? rawProductId[0] : rawProductId;
   const result = await loadCatalogPage();
+
   if (result.failed) return <StateCard failed />;
   if (result.products.length === 0) return <StateCard failed={false} />;
-  return <CatalogOrdering products={result.products} />;
+
+  return (
+    <CatalogOrdering
+      products={result.products}
+      initialProductId={initialProductId ?? null}
+    />
+  );
 }
