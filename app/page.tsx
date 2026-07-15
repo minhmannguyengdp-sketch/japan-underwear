@@ -10,6 +10,38 @@ type HomeData = {
   failed: boolean;
 };
 
+type HomeCategory = {
+  slug: "ao-nguc" | "quan-lot" | "quan-gen";
+  label: string;
+  title: string;
+  description: string;
+  tone: "lilac" | "rose" | "plum";
+};
+
+const HOME_CATEGORIES: HomeCategory[] = [
+  {
+    slug: "ao-nguc",
+    label: "Áo ngực",
+    title: "Phom nâng đỡ cho từng dáng mặc",
+    description: "Các mẫu Pensee và Winking có hình ảnh, màu và size/cup rõ ràng.",
+    tone: "lilac",
+  },
+  {
+    slug: "quan-lot",
+    label: "Quần lót",
+    title: "Nhẹ, gọn và dễ phối theo bộ",
+    description: "Tách riêng nhóm quần để tìm mẫu nhanh hơn khi lên đơn sỉ.",
+    tone: "rose",
+  },
+  {
+    slug: "quan-gen",
+    label: "Quần gen",
+    title: "Định hình gọn cho nhu cầu chuyên biệt",
+    description: "Nhóm sản phẩm gen được trình bày riêng, không trộn với quần lót thường.",
+    tone: "plum",
+  },
+];
+
 async function loadHomeData(): Promise<HomeData> {
   try {
     return { products: await listCatalogProducts({ limit: 200 }), failed: false };
@@ -32,69 +64,97 @@ function coverFor(product: CatalogProduct) {
   return product.images.find((image) => image.isCover) ?? product.images[0] ?? null;
 }
 
+function ProductTile({ product, featured = false }: { product: CatalogProduct; featured?: boolean }) {
+  const cover = coverFor(product);
+
+  return (
+    <Link
+      href={`/cua-hang?san-pham=${encodeURIComponent(product.id)}`}
+      className={featured ? "home-category-feature" : "home-category-card"}
+    >
+      <div className={featured ? "home-category-feature__image" : "home-category-card__image"}>
+        {cover?.src ? <img src={cover.src} alt={cover.alt} /> : <span>Chưa có ảnh</span>}
+        <em className={product.orderable ? "is-ready" : "is-waiting"}>
+          {product.orderable ? "Có thể đặt" : "Đang bổ sung"}
+        </em>
+      </div>
+      <div className={featured ? "home-category-feature__body" : "home-category-card__body"}>
+        <small>{product.brand} · {product.code}</small>
+        <strong>{product.name}</strong>
+        <b>{formatVnd(product.price)}</b>
+      </div>
+    </Link>
+  );
+}
+
 export default async function HomePage() {
   const { products, failed } = await loadHomeData();
-  const featured = products.filter((product) => product.orderable).slice(0, 6);
 
   return (
     <main className="customer-home">
       <section className="home-intro">
         <p className="customer-kicker">Pensee · Winking</p>
-        <h1>Nội y đẹp cho từng nhịp sống.</h1>
-        <p>Chọn mẫu, màu và size/cup từ catalog bán sỉ đã được xác nhận.</p>
+        <h1>Nội y đẹp, tìm đúng nhóm ngay từ đầu.</h1>
+        <p>Catalog được chia rõ theo áo ngực, quần lót và quần gen để thao tác nhanh trên điện thoại.</p>
       </section>
 
       <section className="home-campaign-slot" aria-label="Vị trí ảnh chiến dịch đang chờ cập nhật">
         <span aria-hidden="true" />
       </section>
 
-      <section className="home-section home-section--products">
-        <div className="home-section__heading">
-          <div>
-            <span>Gợi ý hôm nay</span>
-            <h2>Sản phẩm nổi bật</h2>
-          </div>
-          <Link href="/cua-hang">Xem tất cả</Link>
-        </div>
+      {failed ? (
+        <section className="customer-empty-card home-catalog-error">
+          <strong>Chưa đọc được catalog</strong>
+          <p>Kết nối dữ liệu đang chậm. Tải lại trang sau khi PostgreSQL sẵn sàng.</p>
+        </section>
+      ) : (
+        HOME_CATEGORIES.map((category) => {
+          const categoryProducts = products.filter(
+            (product) => product.categorySlug === category.slug && Boolean(coverFor(product)?.src),
+          );
+          const featured = categoryProducts[0] ?? null;
+          const preview = categoryProducts.slice(1, 4);
 
-        {failed ? (
-          <div className="customer-empty-card">
-            <strong>Chưa đọc được catalog</strong>
-            <p>Kiểm tra kết nối dữ liệu rồi tải lại trang.</p>
-          </div>
-        ) : featured.length === 0 ? (
-          <div className="customer-empty-card">
-            <strong>Chưa có mẫu đặt được</strong>
-            <p>Catalog hiện chưa có sản phẩm đủ màu và size/cup.</p>
-          </div>
-        ) : (
-          <div className="home-product-rail no-scrollbar">
-            {featured.map((product) => {
-              const cover = coverFor(product);
-              return (
-                <Link
-                  key={product.id}
-                  href={`/cua-hang?san-pham=${encodeURIComponent(product.id)}`}
-                  className="home-product-card"
-                >
-                  <div className="home-product-card__image">
-                    {cover?.src ? (
-                      <img src={cover.src} alt={cover.alt} />
-                    ) : (
-                      <span>Chưa có ảnh</span>
-                    )}
-                  </div>
-                  <div className="home-product-card__body">
-                    <small>{product.brand} · {product.code}</small>
-                    <strong>{product.name}</strong>
-                    <span>{formatVnd(product.price)}</span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </section>
+          return (
+            <section
+              key={category.slug}
+              className={`home-category-section home-category-section--${category.tone}`}
+            >
+              <header className="home-category-section__heading">
+                <div>
+                  <span>{category.label}</span>
+                  <h2>{category.title}</h2>
+                  <p>{category.description}</p>
+                </div>
+                <b>{categoryProducts.length}</b>
+              </header>
+
+              {featured ? (
+                <>
+                  <ProductTile product={featured} featured />
+                  {preview.length > 0 ? (
+                    <div className="home-category-grid">
+                      {preview.map((product) => (
+                        <ProductTile key={product.id} product={product} />
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div className="home-category-empty">
+                  <strong>Chưa có ảnh đại diện</strong>
+                  <p>Nhóm này sẽ được hoàn thiện sau khi dữ liệu nguồn được bổ sung.</p>
+                </div>
+              )}
+
+              <Link href="/cua-hang" className="home-category-section__link">
+                Xem toàn bộ sản phẩm
+                <span aria-hidden="true">→</span>
+              </Link>
+            </section>
+          );
+        })
+      )}
 
       <section className="home-event-card">
         <div className="home-event-card__ornament" aria-hidden="true" />
@@ -108,29 +168,6 @@ export default async function HomePage() {
             <path d="M5 12h14M14 7l5 5-5 5" />
           </svg>
         </Link>
-      </section>
-
-      <section className="home-guide">
-        <div className="home-section__heading">
-          <div>
-            <span>Đặt sỉ dễ dàng</span>
-            <h2>Ba bước rõ ràng</h2>
-          </div>
-        </div>
-        <ol>
-          <li>
-            <b>01</b>
-            <div><strong>Chọn sản phẩm</strong><p>Tìm theo mã, thương hiệu hoặc nhóm hàng.</p></div>
-          </li>
-          <li>
-            <b>02</b>
-            <div><strong>Chọn phân loại</strong><p>Mỗi dòng có màu, size/cup và số lượng riêng.</p></div>
-          </li>
-          <li>
-            <b>03</b>
-            <div><strong>Xác nhận đơn</strong><p>Thông tin giao hàng lấy từ hồ sơ đã lưu.</p></div>
-          </li>
-        </ol>
       </section>
     </main>
   );
