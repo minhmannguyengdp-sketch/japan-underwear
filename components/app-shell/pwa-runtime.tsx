@@ -5,11 +5,11 @@ import { usePathname } from "next/navigation";
 
 export function PwaRuntime() {
   const pathname = usePathname();
-  const [online, setOnline] = useState(true);
+  const [online, setOnline] = useState(() =>
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
 
   useEffect(() => {
-    setOnline(navigator.onLine);
-
     const markOnline = () => setOnline(true);
     const markOffline = () => setOnline(false);
 
