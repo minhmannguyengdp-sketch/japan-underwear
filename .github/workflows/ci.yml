@@ -57,6 +57,9 @@ jobs:
       - name: Verify live-image color review workflow
         run: npm run catalog:web:color:image-review:verify
 
+      - name: Verify supplier product data workflow
+        run: npm run catalog:supplier:verify
+
       - name: Lint
         shell: bash
         run: |
