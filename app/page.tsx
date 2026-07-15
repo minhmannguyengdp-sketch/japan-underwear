@@ -34,49 +34,25 @@ function coverFor(product: CatalogProduct) {
 
 export default async function HomePage() {
   const { products, failed } = await loadHomeData();
-  const orderable = products.filter((product) => product.orderable);
-  const featured = orderable.slice(0, 4);
-  const imageCount = products.reduce((sum, product) => sum + product.images.length, 0);
+  const featured = products.filter((product) => product.orderable).slice(0, 6);
 
   return (
     <main className="customer-home">
-      <section className="home-hero">
-        <div className="home-hero__veil" />
-        <div className="home-hero__content">
-          <span className="home-hero__eyebrow">Pensee · Winking chính hãng</span>
-          <h1>Đặt hàng sỉ nhanh, đúng màu và đúng size/cup.</h1>
-          <p>Catalog thật, giá thật và giỏ hàng được lưu an toàn trên server.</p>
-          <div className="home-hero__actions">
-            <Link href="/cua-hang" className="customer-button customer-button--primary">
-              Mở cửa hàng
-            </Link>
-            <Link href="/don-hang" className="customer-button customer-button--ghost">
-              Xem đơn hàng
-            </Link>
-          </div>
-        </div>
+      <section className="home-intro">
+        <p className="customer-kicker">Pensee · Winking</p>
+        <h1>Nội y đẹp cho từng nhịp sống.</h1>
+        <p>Chọn mẫu, màu và size/cup từ catalog bán sỉ đã được xác nhận.</p>
       </section>
 
-      <section className="home-stats" aria-label="Tổng quan catalog">
-        <article>
-          <strong>{products.length}</strong>
-          <span>model</span>
-        </article>
-        <article>
-          <strong>{orderable.length}</strong>
-          <span>đặt được</span>
-        </article>
-        <article>
-          <strong>{imageCount}</strong>
-          <span>ảnh thật</span>
-        </article>
+      <section className="home-campaign-slot" aria-label="Vị trí ảnh chiến dịch đang chờ cập nhật">
+        <span aria-hidden="true" />
       </section>
 
-      <section className="home-section">
+      <section className="home-section home-section--products">
         <div className="home-section__heading">
           <div>
-            <span>Sản phẩm nổi bật</span>
-            <h2>Mẫu đang có thể đặt</h2>
+            <span>Gợi ý hôm nay</span>
+            <h2>Sản phẩm nổi bật</h2>
           </div>
           <Link href="/cua-hang">Xem tất cả</Link>
         </div>
@@ -84,7 +60,7 @@ export default async function HomePage() {
         {failed ? (
           <div className="customer-empty-card">
             <strong>Chưa đọc được catalog</strong>
-            <p>Kiểm tra kết nối PostgreSQL rồi tải lại trang.</p>
+            <p>Kiểm tra kết nối dữ liệu rồi tải lại trang.</p>
           </div>
         ) : featured.length === 0 ? (
           <div className="customer-empty-card">
@@ -92,11 +68,15 @@ export default async function HomePage() {
             <p>Catalog hiện chưa có sản phẩm đủ màu và size/cup.</p>
           </div>
         ) : (
-          <div className="home-featured-grid">
+          <div className="home-product-rail no-scrollbar">
             {featured.map((product) => {
               const cover = coverFor(product);
               return (
-                <Link key={product.id} href="/cua-hang" className="home-product-card">
+                <Link
+                  key={product.id}
+                  href={`/cua-hang?san-pham=${encodeURIComponent(product.id)}`}
+                  className="home-product-card"
+                >
                   <div className="home-product-card__image">
                     {cover?.src ? (
                       <img src={cover.src} alt={cover.alt} />
@@ -116,12 +96,40 @@ export default async function HomePage() {
         )}
       </section>
 
+      <section className="home-event-card">
+        <div className="home-event-card__ornament" aria-hidden="true" />
+        <div>
+          <span>Sự kiện</span>
+          <h2>Ưu đãi và thông báo mới</h2>
+          <p>Mọi chương trình dành cho khách sỉ sẽ được cập nhật tại một nơi.</p>
+        </div>
+        <Link href="/su-kien" aria-label="Mở trang sự kiện">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M5 12h14M14 7l5 5-5 5" />
+          </svg>
+        </Link>
+      </section>
+
       <section className="home-guide">
-        <span>Đặt sỉ trong 3 bước</span>
+        <div className="home-section__heading">
+          <div>
+            <span>Đặt sỉ dễ dàng</span>
+            <h2>Ba bước rõ ràng</h2>
+          </div>
+        </div>
         <ol>
-          <li><b>1</b><div><strong>Chọn mẫu</strong><p>Tìm theo mã, thương hiệu hoặc nhóm hàng.</p></div></li>
-          <li><b>2</b><div><strong>Chọn màu và size/cup</strong><p>Mỗi dòng đặt hàng có số lượng riêng.</p></div></li>
-          <li><b>3</b><div><strong>Xác nhận đơn</strong><p>Thông tin giao hàng lấy từ hồ sơ đã lưu.</p></div></li>
+          <li>
+            <b>01</b>
+            <div><strong>Chọn sản phẩm</strong><p>Tìm theo mã, thương hiệu hoặc nhóm hàng.</p></div>
+          </li>
+          <li>
+            <b>02</b>
+            <div><strong>Chọn phân loại</strong><p>Mỗi dòng có màu, size/cup và số lượng riêng.</p></div>
+          </li>
+          <li>
+            <b>03</b>
+            <div><strong>Xác nhận đơn</strong><p>Thông tin giao hàng lấy từ hồ sơ đã lưu.</p></div>
+          </li>
         </ol>
       </section>
     </main>
