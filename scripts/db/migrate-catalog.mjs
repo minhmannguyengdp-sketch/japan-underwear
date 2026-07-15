@@ -12,6 +12,7 @@ const require = createRequire(import.meta.url);
 loadEnv({ path: path.resolve(cwd, ".env.local"), override: true, quiet: true });
 loadEnv({ path: path.resolve(cwd, ".env"), override: false, quiet: true });
 
+const JOURNAL_MAX_ATTEMPTS = 4;
 const REPAIR_MIGRATIONS = [
   {
     createdAt: 1783853000000,
@@ -63,6 +64,11 @@ const REPAIR_MIGRATIONS = [
     createdAt: 1783900000000,
     filename: "apply-catalog-price-management.mjs",
     label: "Catalog price management migration",
+  },
+  {
+    createdAt: 1783905000000,
+    filename: "apply-color-variant-availability.mjs",
+    label: "Color–size/cup availability migration",
   },
 ];
 
@@ -116,6 +122,19 @@ function isLocalDatabase(value) {
   }
 }
 
+function isRetryableConnectionError(error) {
+  const code = typeof error?.code === "string" ? error.code : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    ["ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "EPIPE", "08000", "08001", "08003", "08006", "57P01"].includes(code) ||
+    /timeout expired|connection terminated|connection closed|socket hang up/i.test(message)
+  );
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 function readRepositoryMigrationTimes() {
   const journalPath = path.resolve(cwd, "drizzle", "meta", "_journal.json");
   const journal = JSON.parse(readFileSync(journalPath, "utf8"));
@@ -131,24 +150,40 @@ function readRepositoryMigrationTimes() {
 async function withMigrationJournal(callback) {
   const connectionString = process.env.DATABASE_URL?.trim();
   if (!connectionString) throw new Error("DATABASE_URL is required.");
-  const client = new Client({
-    connectionString,
-    ssl: isLocalDatabase(connectionString) ? undefined : { rejectUnauthorized: false },
-    connectionTimeoutMillis: 30_000,
-    query_timeout: 120_000,
-  });
-  try {
-    await client.connect();
-    const tableResult = await client.query(
-      "SELECT to_regclass('drizzle.__drizzle_migrations') AS table_name",
-    );
-    if (!tableResult.rows[0]?.table_name) {
-      throw new Error("drizzle.__drizzle_migrations does not exist.");
+
+  let lastError;
+  for (let attempt = 1; attempt <= JOURNAL_MAX_ATTEMPTS; attempt += 1) {
+    const client = new Client({
+      connectionString,
+      ssl: isLocalDatabase(connectionString) ? undefined : { rejectUnauthorized: false },
+      connectionTimeoutMillis: 30_000,
+      query_timeout: 120_000,
+      keepAlive: true,
+    });
+    try {
+      await client.connect();
+      const tableResult = await client.query(
+        "SELECT to_regclass('drizzle.__drizzle_migrations') AS table_name",
+      );
+      if (!tableResult.rows[0]?.table_name) {
+        throw new Error("drizzle.__drizzle_migrations does not exist.");
+      }
+      return await callback(client);
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableConnectionError(error) || attempt === JOURNAL_MAX_ATTEMPTS) {
+        throw error;
+      }
+      console.warn(
+        `Migration journal connection lần ${attempt}/${JOURNAL_MAX_ATTEMPTS} chưa thành công: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      await sleep(attempt * 2_000);
+    } finally {
+      await client.end().catch(() => undefined);
     }
-    return await callback(client);
-  } finally {
-    await client.end().catch(() => undefined);
   }
+
+  throw lastError;
 }
 
 async function readAppliedMigrationTimes() {
