@@ -1,76 +1,124 @@
 import Link from "next/link";
 
-export default function WelcomePage() {
+import { listCatalogProducts } from "@/lib/catalog";
+import type { CatalogProduct } from "@/lib/catalog-types";
+
+export const dynamic = "force-dynamic";
+
+function coverFor(product: CatalogProduct) {
+  return product.images.find((image) => image.isCover) ?? product.images[0] ?? null;
+}
+
+async function loadWelcomeProducts() {
+  try {
+    const products = await listCatalogProducts({ limit: 120 });
+    return products.filter(
+      (product) =>
+        product.orderable &&
+        product.brand.toLowerCase() === "pensee" &&
+        Boolean(coverFor(product)?.src),
+    );
+  } catch (error) {
+    console.error(
+      "Welcome catalog failed:",
+      error instanceof Error ? error.message : String(error),
+    );
+    return [];
+  }
+}
+
+export default async function WelcomePage() {
+  const products = await loadWelcomeProducts();
+  const featured = products[0] ?? null;
+  const secondary = products[1] ?? null;
+  const featuredCover = featured ? coverFor(featured) : null;
+  const secondaryCover = secondary ? coverFor(secondary) : null;
+
   return (
     <main className="fashion-welcome">
       <div className="fashion-welcome__backdrop" aria-hidden="true" />
 
       <section className="fashion-welcome__brand">
         <img
-          src="/brand/pensee-logo-clean.webp"
+          src="/brand/pensee-logo-transparent.svg"
           alt="Pensee"
           className="fashion-welcome__logo"
         />
-        <p className="fashion-welcome__eyebrow">Tuấn Thủy · Đặt hàng sỉ</p>
         <h1>
-          <span>Welcome to</span>
-          <strong>Pensee</strong>
+          Welcome to <strong>Pensee</strong>
         </h1>
-        <div className="fashion-welcome__divider" aria-hidden="true">
-          <span />
-          <b>✦</b>
-          <span />
+        <p>Nội y tôn vinh vẻ đẹp, sự tự tin và cảm giác vừa vặn của bạn.</p>
+      </section>
+
+      <section className="fashion-welcome__visual" aria-label="Sản phẩm Pensee nổi bật">
+        {featuredCover?.src ? (
+          <img
+            src={featuredCover.src}
+            alt={featuredCover.alt || featured?.name || "Sản phẩm Pensee"}
+            className="fashion-welcome__hero-image"
+          />
+        ) : (
+          <div className="fashion-welcome__visual-placeholder" aria-hidden="true" />
+        )}
+
+        <div className="fashion-welcome__visual-shade" aria-hidden="true" />
+
+        {featured ? (
+          <div className="fashion-welcome__product-copy">
+            <span>Pensee · {featured.code}</span>
+            <strong>{featured.name}</strong>
+          </div>
+        ) : null}
+
+        {secondary && secondaryCover?.src ? (
+          <div className="fashion-welcome__mini-card" aria-hidden="true">
+            <img src={secondaryCover.src} alt="" />
+            <span>{secondary.code}</span>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="fashion-welcome__panel">
+        <div className="fashion-welcome__panel-copy">
+          <span>Tuấn Thủy · Đặt hàng sỉ</span>
+          <h2>Chọn đẹp. Đặt nhanh.</h2>
+          <p>Catalog thật, giá thật và phân loại màu · size/cup rõ ràng.</p>
         </div>
-        <p className="fashion-welcome__tagline">Nội y tôn vinh vẻ đẹp của bạn.</p>
-        <small>Thoải mái. Tự tin. Là chính bạn.</small>
+
+        <div className="fashion-welcome__actions">
+          <Link
+            href="/dang-nhap?callbackUrl=/tai-khoan"
+            className="fashion-welcome__primary"
+          >
+            <span>
+              <small>Tài khoản khách hàng</small>
+              <strong>Đăng nhập</strong>
+            </span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M5 12h14M14 7l5 5-5 5" />
+            </svg>
+          </Link>
+
+          <Link href="/cua-hang" className="fashion-welcome__secondary">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M5 5.5h14v15H5z" />
+              <path d="M8 5.5a4 4 0 0 1 8 0" />
+            </svg>
+            <span>Khám phá bộ sưu tập</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M5 12h14M14 7l5 5-5 5" />
+            </svg>
+          </Link>
+        </div>
+
+        <div className="fashion-welcome__trust" aria-label="Cam kết dịch vụ">
+          <span>Chính hãng</span>
+          <i />
+          <span>Đặt hàng an toàn</span>
+          <i />
+          <span>Theo dõi đơn</span>
+        </div>
       </section>
-
-      <section className="fashion-welcome__visual" aria-label="Bộ sưu tập Pensee">
-        <div className="fashion-welcome__product-art" aria-hidden="true" />
-        <div className="fashion-welcome__visual-fade" aria-hidden="true" />
-      </section>
-
-      <section className="fashion-welcome__actions">
-        <Link
-          href="/dang-nhap?callbackUrl=/tai-khoan"
-          className="fashion-welcome__primary"
-        >
-          <span>
-            <small>Tài khoản khách hàng</small>
-            <strong>Đăng nhập</strong>
-          </span>
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <path d="M5 12h14M14 7l5 5-5 5" />
-          </svg>
-        </Link>
-
-        <Link href="/cua-hang" className="fashion-welcome__secondary">
-          <svg aria-hidden="true" viewBox="0 0 24 24" className="fashion-welcome__hanger">
-            <path d="M12 5a2 2 0 1 0-2-2M12 5v3l-8 6h16l-8-6" />
-          </svg>
-          <span>Khám phá bộ sưu tập</span>
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <path d="M5 12h14M14 7l5 5-5 5" />
-          </svg>
-        </Link>
-      </section>
-
-      <footer className="fashion-welcome__trust">
-        <span>
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21c5-3 8-7 8-12-5 0-8-3-8-3S9 9 4 9c0 5 3 9 8 12Z" /></svg>
-          Chất lượng
-        </span>
-        <i />
-        <span>
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3 8 8 9 5-1 8-4 8-9V6l-8-3Z" /><path d="m9 12 2 2 4-4" /></svg>
-          Đặt hàng an toàn
-        </span>
-        <i />
-        <span>
-          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" /><path d="M12 5v14M5 12h14" /></svg>
-          Dành cho bạn
-        </span>
-      </footer>
     </main>
   );
 }
