@@ -1,60 +1,67 @@
-# Nhập màu và mô tả sản phẩm Tuấn Thủy
+# Nhập dữ liệu supplier Tuấn Thủy
 
-## Hai nguồn dữ liệu tách biệt
+## Nguồn và phạm vi
 
-Quy trình dùng hai nguồn có phạm vi rõ ràng, không trộn bằng chứng:
+File `BẢNG MÔ TẢ SẢN PHẨM1.xlsx` được khóa bằng SHA-256:
 
-1. `BẢNG MÔ TẢ SẢN PHẨM1.xlsx`
-   - SHA-256: `2b1a73b4ce4b71a27e72949d6b90a24e0a0936ad05173a75bd86bbcd619f11bf`;
-   - 71 mẫu áo ngực trong phạm vi app;
-   - 320 màu được liệt kê theo từng dòng;
-   - 71 mô tả rút gọn từ nội dung nhà cung cấp;
-   - 11 mẫu đầm ngủ ngoài phạm vi catalog hiện tại.
-2. Xác nhận trực tiếp của chủ catalog ngày 2026-07-15
-   - 5002: Da, Đen, Tím;
-   - 5003: Da, Đen;
-   - 9512: Da, Xanh, Đỏ, Tím, Đen;
-   - 9536: Da, Đen;
-   - tổng 4 mẫu / 12 màu;
-   - không có nguồn mô tả nên không cập nhật `short_description` cho bốn mã này.
+`2b1a73b4ce4b71a27e72949d6b90a24e0a0936ad05173a75bd86bbcd619f11bf`
 
-Sau khi ghép đúng nguồn, baseline 30 mã áo ngực có size/cup nhưng thiếu màu được phủ đủ 30/30. Tổng dữ liệu màu dùng cho hai luồng là 332 màu: 320 từ Excel và 12 từ xác nhận của chủ catalog.
+Nguồn này cung cấp:
 
-## Quy tắc mô tả trong app
+- 71 mẫu áo ngực trong phạm vi app;
+- 320 dòng màu;
+- 71 mô tả rút gọn;
+- 1.837 quan hệ màu–size/cup chính xác;
+- 412 variant identity theo sản phẩm;
+- 30/30 mã áo ngực đang có màu nhưng thiếu size/cup được phủ nguồn;
+- 11 mẫu đầm ngủ ngoài phạm vi app.
 
-`short_description` chỉ giữ các ý chính:
+Xác nhận riêng của chủ catalog ngày 2026-07-15 cung cấp 12 màu cho bốn mã `5002`, `5003`, `9512`, `9536`. Xác nhận này không có size/cup theo màu và không có mô tả, nên không được dùng để tự sinh quan hệ màu–size/cup.
 
-- chất liệu;
-- có gọng/không gọng và kiểu cúp;
-- loại đệm/mút;
-- đặc điểm bản lưng hoặc dây vai.
+## Logic đặt hàng
 
-Bỏ nội dung quảng cáo dài, câu lặp và lời kêu gọi mua hàng.
+Một sản phẩm chỉ đặt được khi tồn tại ít nhất một dòng active trong:
+
+`japan_underwear.product_color_variants`
+
+Mỗi dòng liên kết đúng:
+
+- một sản phẩm;
+- một màu của sản phẩm đó;
+- một variant size/cup của chính sản phẩm đó.
+
+Không dùng tích Descartes giữa toàn bộ màu và toàn bộ size/cup. Giao diện chỉ hiện size/cup hợp lệ sau khi chọn màu. Database trigger chặn cặp sai ở cả `cart_items` và `order_items`, kể cả khi gọi API trực tiếp.
+
+Bảy mã có bộ size thay đổi theo màu trong nguồn hiện tại:
+
+`9501`, `9502`, `9504`, `9510`, `9515`, `9517`, `9525`.
+
+Mã Winking `9100` có ô nguồn `75A,80A,85A70B,75B,80B`. Manifest ghi rõ correction thành `75A, 80A, 85A, 70B, 75B, 80B` vì hai token `85A` và `70B` bị thiếu dấu phẩy.
 
 ## Quy tắc bảo toàn
 
-- Chỉ dùng schema PostgreSQL `japan_underwear`.
-- Không tạo sản phẩm mới từ Excel hoặc xác nhận màu.
-- Không cập nhật giá.
-- Không cập nhật `product_variants`.
-- Import Excel chỉ cập nhật màu và `short_description` của sản phẩm khớp catalog active.
-- Import bổ sung của chủ catalog chỉ cập nhật màu của đúng bốn mã; tuyệt đối không cập nhật mô tả.
-- Bốn mã bổ sung được khóa cứng đúng identity và đúng tổng 12 màu.
-- Nếu PostgreSQL có màu active ngoài bộ màu đầy đủ của supplier, importer dừng để review.
-- Màu ngoài supplier chỉ được chuyển sang `inactive` qua manifest reconciliation đã duyệt; không xóa bản ghi.
-- Manifest reconciliation khóa SHA-256 của supplier manifest và conflict audit.
-- Snapshot toàn bộ variant được so sánh trước và sau mỗi transaction.
+- Chỉ dùng schema `japan_underwear`.
+- Không tạo sản phẩm hoặc màu mới trong importer màu–size/cup.
+- Không cập nhật giá, mô tả hoặc dữ liệu đơn lịch sử.
+- Chỉ tạo/reactivate `product_variants` có trong hợp size/cup của Excel.
+- Chỉ tạo quan hệ màu–size/cup có trong đúng dòng màu của Excel.
+- Nếu DB có variant active ngoài hợp đầy đủ của Excel, importer dừng để review.
+- Nếu DB có quan hệ active ngoài Excel, importer dừng để review.
+- Product, color, price và lịch sử đơn được hash trước–sau transaction.
+- Mọi import được ghi trong `japan_underwear.catalog_import_runs`.
 
 ## File local
 
-Lưu các file sau trong `data/local/`:
+Lưu trong `data/local/`:
 
 - `BẢNG MÔ TẢ SẢN PHẨM1.xlsx`
 - `tuan-thuy-supplier-product-data-2026-07-15.json`
 - `tuan-thuy-owner-color-supplement-2026-07-15.json`
-- `tuan-thuy-supplier-color-conflicts.json` — sinh từ PostgreSQL, chỉ đọc.
+- `tuan-thuy-supplier-color-variants-2026-07-15.json`
 
-## 1. Xác minh nguồn Excel
+## Quy trình màu và mô tả
+
+Luồng màu/mô tả và reconciliation đã chạy riêng trước luồng size/cup. Các lệnh chính:
 
 ```powershell
 cd F:\1_A_Disk_D\TT\japan-underwear
@@ -63,145 +70,95 @@ npm run catalog:supplier:validate -- `
   ".\data\local\tuan-thuy-supplier-product-data-2026-07-15.json" `
   ".\data\local\BẢNG MÔ TẢ SẢN PHẨM1.xlsx" `
   --validate-only
-```
-
-## 2. Dry run nguồn Excel
-
-```powershell
-cd F:\1_A_Disk_D\TT\japan-underwear
 
 npm run catalog:supplier:import -- `
   ".\data\local\tuan-thuy-supplier-product-data-2026-07-15.json" `
   ".\data\local\BẢNG MÔ TẢ SẢN PHẨM1.xlsx"
 ```
 
-Nếu có màu active ngoài danh sách supplier, importer dừng. Không chạy `--apply`.
+Nếu có màu active ngoài supplier, dùng audit và reconciliation đã duyệt; không tự xóa màu. Supplier apply chỉ chạy khi dry run báo `Unexpected active colors: 0`.
 
-## 3. Audit xung đột màu
+## Quy trình quan hệ màu–size/cup
+
+### 1. Migration
 
 ```powershell
 cd F:\1_A_Disk_D\TT\japan-underwear
 
-npm run catalog:supplier:conflicts -- `
-  ".\data\local\tuan-thuy-supplier-product-data-2026-07-15.json" `
-  ".\data\local\tuan-thuy-supplier-color-conflicts.json"
+npm run db:migrate
 ```
 
-Baseline audit ngày 2026-07-15:
+Migration `0013_color_variant_availability` tạo bảng quan hệ và trigger bảo vệ giỏ/đơn.
 
-- 57 supplier products khớp catalog active;
-- 7 sản phẩm có màu active ngoài supplier;
-- 10 màu cần chuyển `inactive`;
-- 175 màu supplier còn thiếu trong PostgreSQL.
-
-## 4. Tạo review reconciliation
+### 2. Validate manifest
 
 ```powershell
 cd F:\1_A_Disk_D\TT\japan-underwear
 
-npm run catalog:supplier:reconcile:build -- `
-  ".\data\local\tuan-thuy-supplier-product-data-2026-07-15.json" `
-  ".\data\local\tuan-thuy-supplier-color-conflicts.json" `
-  ".\data\local\tuan-thuy-supplier-color-reconciliation.review.json"
-```
-
-Review phải ghi đúng 7 sản phẩm / 10 màu. Chưa ghi PostgreSQL.
-
-## 5. Chủ catalog duyệt reconciliation
-
-```powershell
-cd F:\1_A_Disk_D\TT\japan-underwear
-
-npm run catalog:supplier:reconcile:approve -- `
-  ".\data\local\tuan-thuy-supplier-color-reconciliation.review.json" `
-  --approve
-```
-
-File mặc định:
-
-`data/local/tuan-thuy-supplier-color-reconciliation.review.approved.json`
-
-## 6. Validate và dry run reconciliation
-
-```powershell
-cd F:\1_A_Disk_D\TT\japan-underwear
-
-npm run catalog:supplier:reconcile:import -- `
-  ".\data\local\tuan-thuy-supplier-color-reconciliation.review.approved.json" `
+npm run catalog:supplier:variants:validate -- `
+  ".\data\local\tuan-thuy-supplier-color-variants-2026-07-15.json" `
+  ".\data\local\BẢNG MÔ TẢ SẢN PHẨM1.xlsx" `
   --validate-only
-
-npm run catalog:supplier:reconcile:import -- `
-  ".\data\local\tuan-thuy-supplier-color-reconciliation.review.approved.json"
 ```
 
-Dry run phải xác nhận đúng 10 màu active hiện tại khớp manifest đã duyệt.
+Kết quả nguồn chuẩn phải có:
 
-## 7. Apply reconciliation
+- 71 supplier bras;
+- 320 màu;
+- 1.837 quan hệ màu–size/cup;
+- 412 variant identity;
+- 7 sản phẩm có size thay đổi theo màu;
+- baseline 30 thiếu size/cup: có nguồn 30, còn thiếu 0.
+
+### 3. Dry run PostgreSQL
 
 ```powershell
 cd F:\1_A_Disk_D\TT\japan-underwear
 
-npm run catalog:supplier:reconcile:import -- `
-  ".\data\local\tuan-thuy-supplier-color-reconciliation.review.approved.json" `
-  --apply
-```
-
-Transaction này chỉ đặt `product_colors.is_active=false` cho đúng 10 màu. Không xóa bản ghi và không thay đổi sản phẩm, mô tả, giá hoặc variant.
-
-## 8. Chạy lại supplier dry run và apply
-
-Sau reconciliation, supplier dry run phải báo `Unexpected active colors: 0`.
-
-```powershell
-cd F:\1_A_Disk_D\TT\japan-underwear
-
-npm run catalog:supplier:import -- `
-  ".\data\local\tuan-thuy-supplier-product-data-2026-07-15.json" `
+npm run catalog:supplier:variants:import -- `
+  ".\data\local\tuan-thuy-supplier-color-variants-2026-07-15.json" `
   ".\data\local\BẢNG MÔ TẢ SẢN PHẨM1.xlsx"
+```
 
-npm run catalog:supplier:import -- `
-  ".\data\local\tuan-thuy-supplier-product-data-2026-07-15.json" `
+Chỉ apply khi cả hai số đều bằng 0:
+
+- `Unexpected active variants`
+- `Unexpected active mappings`
+
+### 4. Apply
+
+```powershell
+cd F:\1_A_Disk_D\TT\japan-underwear
+
+npm run catalog:supplier:variants:import -- `
+  ".\data\local\tuan-thuy-supplier-color-variants-2026-07-15.json" `
   ".\data\local\BẢNG MÔ TẢ SẢN PHẨM1.xlsx" `
   --apply
 ```
 
-## 9. Xác minh, dry run và apply bổ sung bốn mã
+Nguồn hiện tại khớp 57 mẫu áo ngực active. Sau import, 57 mẫu này có thể đặt theo đúng cặp màu–size/cup. Năm mã áo ngực active `5001`, `5002`, `5003`, `9512`, `9536` không có dữ liệu kích cỡ theo từng màu trong Excel nên vẫn bị khóa quan hệ, không được mở sáng bằng nhân chéo.
 
-```powershell
-cd F:\1_A_Disk_D\TT\japan-underwear
-
-npm run catalog:owner-color:validate -- `
-  ".\data\local\tuan-thuy-owner-color-supplement-2026-07-15.json" `
-  --validate-only
-
-npm run catalog:owner-color:import -- `
-  ".\data\local\tuan-thuy-owner-color-supplement-2026-07-15.json"
-
-npm run catalog:owner-color:import -- `
-  ".\data\local\tuan-thuy-owner-color-supplement-2026-07-15.json" `
-  --apply
-```
-
-Nếu supplier apply thất bại thì dừng, không chạy bổ sung bốn mã.
-
-## 10. Hậu kiểm
+## Hậu kiểm
 
 ```powershell
 cd F:\1_A_Disk_D\TT\japan-underwear
 
 npm run db:verify
+if ($LASTEXITCODE -ne 0) { throw "db:verify thất bại." }
+
 npm run lint
+if ($LASTEXITCODE -ne 0) { throw "lint thất bại." }
+
 npm run build
-npm run dev
+if ($LASTEXITCODE -ne 0) { throw "build thất bại." }
 ```
 
-Kiểm tra thật:
+Smoke test bắt buộc:
 
-- 108 model không đổi;
-- 199 size/cup không đổi;
-- 30 mã mục tiêu có màu đầy đủ;
-- 10 màu cũ ngoài supplier không còn active nhưng bản ghi vẫn tồn tại;
-- mô tả rút gọn chỉ xuất hiện ở 71 mẫu có nguồn Excel;
-- bốn mã bổ sung không bị ghi mô tả giả;
-- chọn màu + size/cup và thêm giỏ thành công;
-- đơn cũ không thay đổi.
+- chọn từng màu và xác nhận dropdown chỉ hiện size/cup của màu đó;
+- mã có size khác theo màu không cho chọn cặp ngoài Excel;
+- API giỏ trả `409 invalid_color_variant_selection` với cặp sai;
+- checkout khách và tạo đơn tay dùng chung quy tắc;
+- đơn cũ và snapshot giá không thay đổi;
+- 43 mã quần và 3 áo ngực `9079`, `9120`, `9121` vẫn chờ dữ liệu thật;
+- PR giữ draft cho tới khi local migration, import và smoke test đạt.
