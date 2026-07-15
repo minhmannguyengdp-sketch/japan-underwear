@@ -35,11 +35,28 @@ export function clearCartCookie(response: NextResponse) {
   return response;
 }
 
+function isInvalidColorVariantSelection(error: unknown) {
+  const databaseError = error as { code?: unknown; constraint?: unknown };
+  return (
+    databaseError?.code === "23514" &&
+    databaseError?.constraint === "orderable_color_variant_selection_chk"
+  );
+}
+
 export function orderingErrorResponse(error: unknown) {
   if (error instanceof OrderingError) {
     return NextResponse.json(
       { error: error.message, code: error.code },
       { status: error.status },
+    );
+  }
+  if (isInvalidColorVariantSelection(error)) {
+    return NextResponse.json(
+      {
+        error: "Màu và size/cup đã chọn không phải tổ hợp đang được bán.",
+        code: "invalid_color_variant_selection",
+      },
+      { status: 409 },
     );
   }
   console.error("Ordering API failed:", error instanceof Error ? error.message : String(error));
