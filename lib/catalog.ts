@@ -89,8 +89,7 @@ export async function listCatalogProducts(
   if (productResult.rowCount === 0) return [];
 
   const productIds = productResult.rows.map((row) => String(row.id));
-
-  const [imageResult, colorResult, variantResult] = await Promise.all([
+  const [imageResult, colorResult, variantResult, availabilityResult] = await Promise.all([
     pool.query(
       `
         SELECT id, product_id, r2_key, alt_text, sort_order, is_cover
@@ -120,6 +119,16 @@ export async function listCatalogProducts(
       `,
       [productIds],
     ),
+    pool.query(
+      `
+        SELECT product_id, color_id, variant_id
+        FROM japan_underwear.product_color_variants
+        WHERE product_id = ANY($1::uuid[])
+          AND is_active = true
+        ORDER BY product_id, color_id, variant_id
+      `,
+      [productIds],
+    ),
   ]);
 
   const imagesByProduct = new Map<string, CatalogImage[]>();
@@ -138,16 +147,30 @@ export async function listCatalogProducts(
     imagesByProduct.set(productId, images);
   }
 
+  const activeColorIds = new Set(colorResult.rows.map((row) => String(row.id)));
+  const activeVariantIds = new Set(variantResult.rows.map((row) => String(row.id)));
+  const variantIdsByColor = new Map<string, string[]>();
+  for (const row of availabilityResult.rows) {
+    const colorId = String(row.color_id);
+    const variantId = String(row.variant_id);
+    if (!activeColorIds.has(colorId) || !activeVariantIds.has(variantId)) continue;
+    const variantIds = variantIdsByColor.get(colorId) ?? [];
+    variantIds.push(variantId);
+    variantIdsByColor.set(colorId, variantIds);
+  }
+
   const colorsByProduct = new Map<string, CatalogColor[]>();
   for (const row of colorResult.rows) {
     const productId = String(row.product_id);
     const colors = colorsByProduct.get(productId) ?? [];
+    const colorId = String(row.id);
     colors.push({
-      id: String(row.id),
+      id: colorId,
       code: String(row.code),
       label: String(row.name),
       swatch: row.swatch ? String(row.swatch) : null,
       sortOrder: Number(row.sort_order),
+      variantIds: variantIdsByColor.get(colorId) ?? [],
     });
     colorsByProduct.set(productId, colors);
   }
@@ -179,12 +202,14 @@ export async function listCatalogProducts(
     const id = String(row.id);
     const colors = colorsByProduct.get(id) ?? [];
     const variants = variantsByProduct.get(id) ?? [];
-    const orderable = colors.length > 0 && variants.length > 0;
+    const orderable = colors.some((color) => color.variantIds.length > 0);
     const orderingBlocker = orderable
       ? null
       : colors.length === 0
         ? "missing-color"
-        : "missing-size-cup";
+        : variants.length === 0
+          ? "missing-size-cup"
+          : "missing-color-size-link";
 
     return {
       id,
