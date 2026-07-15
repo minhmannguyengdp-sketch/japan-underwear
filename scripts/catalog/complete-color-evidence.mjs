@@ -32,7 +32,7 @@ export function validateCompleteColorEvidence(payload, stage) {
   const rules = stage === "approved" ? payload.approval : payload.businessRules;
   if (!rules?.observedImagesAloneDoNotProveCompleteness) {
     throw new Error(
-      "Ảnh quan sát chỉ chứng minh màu nhìn thấy; không được dùng để kết luận bộ màu đầy đủ.",
+      "Ảnh quan sát không đủ để kết luận bộ màu đầy đủ; ảnh chỉ chứng minh màu nhìn thấy.",
     );
   }
   if (!rules?.colorSetCompletenessVerified) {
