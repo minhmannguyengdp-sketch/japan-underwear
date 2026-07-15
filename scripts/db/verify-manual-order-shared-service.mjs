@@ -29,6 +29,8 @@ function isLocalDatabase(value) {
 const client = new Client({
   connectionString,
   ssl: isLocalDatabase(connectionString) ? undefined : { rejectUnauthorized: false },
+  connectionTimeoutMillis: 30_000,
+  query_timeout: 120_000,
 });
 
 async function expectPgError(label, code, work) {
@@ -51,15 +53,18 @@ function verifySourceArchitecture() {
   const checkout = fs.readFileSync(path.resolve(cwd, "lib/customer-checkout.ts"), "utf8");
   const manual = fs.readFileSync(path.resolve(cwd, "lib/manual-orders.ts"), "utf8");
   const cart = fs.readFileSync(path.resolve(cwd, "lib/server-ordering.ts"), "utf8");
+  const manualForm = fs.readFileSync(
+    path.resolve(cwd, "components/admin/manual-order-form.tsx"),
+    "utf8",
+  );
 
-  const sharedMarkers = [
+  for (const marker of [
     "COALESCE(variant.price_override, product.base_price)",
     "INSERT INTO japan_underwear.orders",
     "INSERT INTO japan_underwear.order_items",
     "INSERT INTO japan_underwear.outbox_events",
     "$2::jsonb",
-  ];
-  for (const marker of sharedMarkers) {
+  ]) {
     if (!shared.includes(marker)) {
       throw new Error(`Shared order writer is missing marker: ${marker}`);
     }
@@ -80,6 +85,9 @@ function verifySourceArchitecture() {
   if (cart.includes("createServerOrder") || cart.includes("INSERT INTO japan_underwear.orders")) {
     throw new Error("Legacy server-ordering still contains a duplicate order creation path.");
   }
+  if (!manualForm.includes("variantsForColor") || !manualForm.includes("variantIds")) {
+    throw new Error("Manual order form does not constrain size/cup by selected color.");
+  }
 }
 
 async function verifySchema() {
@@ -97,6 +105,7 @@ async function verifySchema() {
          AND column_name = 'source_cart_id') AS source_cart_nullable,
       to_regclass('japan_underwear.orders_staff_manual_request_uidx') AS manual_request_index,
       to_regclass('japan_underwear.orders_source_created_idx') AS source_created_index,
+      to_regclass('japan_underwear.product_color_variants') AS availability_table,
       to_regprocedure('japan_underwear.derive_order_creation_source()') AS derive_function,
       to_regprocedure('japan_underwear.protect_order_customer_owner()') AS protect_function,
       to_regprocedure('japan_underwear.record_order_status_event()') AS audit_function
@@ -107,6 +116,7 @@ async function verifySchema() {
     state.source_cart_nullable !== "YES" ||
     !state.manual_request_index ||
     !state.source_created_index ||
+    !state.availability_table ||
     !state.derive_function ||
     !state.protect_function ||
     !state.audit_function
@@ -123,18 +133,74 @@ async function verifySchema() {
   }
 }
 
+async function createExactSelection(suffix) {
+  const brand = await client.query(
+    `INSERT INTO japan_underwear.brands (name, slug)
+     VALUES ($1, $2) RETURNING id`,
+    [`Manual verify ${suffix}`, `manual-verify-${suffix}`],
+  );
+  const category = await client.query(
+    `INSERT INTO japan_underwear.categories (name, slug)
+     VALUES ($1, $2) RETURNING id`,
+    [`Manual verify ${suffix}`, `manual-verify-category-${suffix}`],
+  );
+  const product = await client.query(
+    `INSERT INTO japan_underwear.products
+       (brand_id, category_id, model_code, name, slug, base_price, currency, is_active)
+     VALUES ($1::uuid, $2::uuid, $3, $4, $5, 123000, 'VND', true)
+     RETURNING id, model_code, name, currency`,
+    [
+      brand.rows[0].id,
+      category.rows[0].id,
+      `M${suffix.slice(0, 3)}`,
+      `Manual verify product ${suffix}`,
+      `manual-verify-product-${suffix}`,
+    ],
+  );
+  const color = await client.query(
+    `INSERT INTO japan_underwear.product_colors
+       (product_id, code, name, sort_order, is_active)
+     VALUES ($1::uuid, 'den', 'Đen', 0, true)
+     RETURNING id, code, name`,
+    [product.rows[0].id],
+  );
+  const variant = await client.query(
+    `INSERT INTO japan_underwear.product_variants
+       (product_id, size_code, cup_code, price_override, is_active)
+     VALUES ($1::uuid, '75', 'A', NULL, true)
+     RETURNING id, size_code, cup_code`,
+    [product.rows[0].id],
+  );
+  await client.query(
+    `INSERT INTO japan_underwear.product_color_variants
+       (product_id, color_id, variant_id, source, is_active)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, 'manual-order-verifier', true)`,
+    [product.rows[0].id, color.rows[0].id, variant.rows[0].id],
+  );
+  return {
+    product_variant_id: variant.rows[0].id,
+    color_id: color.rows[0].id,
+    model_code: product.rows[0].model_code,
+    product_name: product.rows[0].name,
+    color_code: color.rows[0].code,
+    color_name: color.rows[0].name,
+    size_code: variant.rows[0].size_code,
+    cup_code: variant.rows[0].cup_code,
+    unit_price: 123000,
+    currency: product.rows[0].currency,
+  };
+}
+
 async function verifyRuntime() {
   await client.query("BEGIN");
   try {
     const suffix = randomUUID();
+    const shortSuffix = suffix.slice(0, 8);
     const users = await client.query(
-      `
-        INSERT INTO japan_underwear.users (email, name)
-        VALUES
-          ($1, 'Manual order verifier staff'),
-          ($2, 'Manual order verifier customer')
-        RETURNING id
-      `,
+      `INSERT INTO japan_underwear.users (email, name)
+       VALUES ($1, 'Manual order verifier staff'),
+              ($2, 'Manual order verifier customer')
+       RETURNING id`,
       [
         `manual-staff-${suffix}@example.invalid`,
         `manual-customer-${suffix}@example.invalid`,
@@ -143,46 +209,17 @@ async function verifyRuntime() {
     const staffUserId = users.rows[0].id;
     const customerUserId = users.rows[1].id;
     await client.query(
-      `
-        INSERT INTO japan_underwear.user_roles (user_id, role)
-        VALUES ($1::uuid, 'sales')
-      `,
+      "INSERT INTO japan_underwear.user_roles (user_id, role) VALUES ($1::uuid, 'sales')",
       [staffUserId],
     );
     await client.query(
-      `
-        INSERT INTO japan_underwear.customer_profiles (
-          user_id, store_name, contact_name, phone, delivery_address
-        ) VALUES ($1::uuid, 'Verifier Store', 'Verifier Customer', '0900000000', 'Verifier Address')
-      `,
+      `INSERT INTO japan_underwear.customer_profiles
+         (user_id, store_name, contact_name, phone, delivery_address)
+       VALUES ($1::uuid, 'Verifier Store', 'Verifier Customer', '0900000000', 'Verifier Address')`,
       [customerUserId],
     );
 
-    const selection = await client.query(`
-      SELECT
-        variant.id AS product_variant_id,
-        color.id AS color_id,
-        product.model_code,
-        product.name AS product_name,
-        color.code AS color_code,
-        color.name AS color_name,
-        variant.size_code,
-        variant.cup_code,
-        COALESCE(variant.price_override, product.base_price)::integer AS unit_price,
-        product.currency
-      FROM japan_underwear.product_variants AS variant
-      JOIN japan_underwear.products AS product
-        ON product.id = variant.product_id AND product.is_active
-      JOIN japan_underwear.product_colors AS color
-        ON color.product_id = product.id AND color.is_active
-      WHERE variant.is_active
-      ORDER BY product.created_at, variant.created_at, color.sort_order
-      LIMIT 1
-    `);
-    if (selection.rowCount !== 1) {
-      throw new Error("Không có catalog selection active để verify manual order.");
-    }
-    const item = selection.rows[0];
+    const item = await createExactSelection(shortSuffix);
     const quantity = 2;
     const subtotal = Number(item.unit_price) * quantity;
     const manualRequestId = randomUUID();
@@ -190,49 +227,35 @@ async function verifyRuntime() {
     const actorLabel = "manual-order-verifier";
 
     await client.query(
-      `
-        SELECT
-          set_config('japan_underwear.order_status_actor_source', 'staff_manual', true),
-          set_config('japan_underwear.order_status_actor_label', $1, true),
-          set_config('japan_underwear.order_status_idempotency_key', $2, true)
-      `,
+      `SELECT
+         set_config('japan_underwear.order_status_actor_source', 'staff_manual', true),
+         set_config('japan_underwear.order_status_actor_label', $1, true),
+         set_config('japan_underwear.order_status_idempotency_key', $2, true)`,
       [actorLabel, `staff-manual:${staffUserId}:${manualRequestId}`],
     );
     const manualOrder = await client.query(
-      `
-        INSERT INTO japan_underwear.orders (
-          order_code, order_source, source_cart_id, manual_request_id,
-          created_by_user_id, status, customer_store_name, customer_name,
-          customer_phone, delivery_address, subtotal, currency, customer_user_id
-        ) VALUES (
-          $1, 'staff_manual', NULL, $2::uuid,
-          $3::uuid, 'submitted', 'Verifier Store', 'Verifier Customer',
-          '0900000000', 'Verifier Address', $4, $5, $6::uuid
-        )
-        RETURNING id, order_source, source_cart_id
-      `,
-      [
-        manualOrderCode,
-        manualRequestId,
-        staffUserId,
-        subtotal,
-        item.currency,
-        customerUserId,
-      ],
+      `INSERT INTO japan_underwear.orders (
+         order_code, order_source, source_cart_id, manual_request_id,
+         created_by_user_id, status, customer_store_name, customer_name,
+         customer_phone, delivery_address, subtotal, currency, customer_user_id
+       ) VALUES (
+         $1, 'staff_manual', NULL, $2::uuid,
+         $3::uuid, 'submitted', 'Verifier Store', 'Verifier Customer',
+         '0900000000', 'Verifier Address', $4, $5, $6::uuid
+       ) RETURNING id, order_source, source_cart_id`,
+      [manualOrderCode, manualRequestId, staffUserId, subtotal, item.currency, customerUserId],
     );
     const manualOrderId = manualOrder.rows[0].id;
     await client.query(
-      `
-        INSERT INTO japan_underwear.order_items (
-          order_id, product_variant_id, color_id, quantity,
-          unit_price, line_total, product_code_snapshot,
-          product_name_snapshot, color_code_snapshot, color_name_snapshot,
-          size_code_snapshot, cup_code_snapshot
-        ) VALUES (
-          $1::uuid, $2::uuid, $3::uuid, $4,
-          $5, $6, $7, $8, $9, $10, $11, $12
-        )
-      `,
+      `INSERT INTO japan_underwear.order_items (
+         order_id, product_variant_id, color_id, quantity,
+         unit_price, line_total, product_code_snapshot,
+         product_name_snapshot, color_code_snapshot, color_name_snapshot,
+         size_code_snapshot, cup_code_snapshot
+       ) VALUES (
+         $1::uuid, $2::uuid, $3::uuid, $4,
+         $5, $6, $7, $8, $9, $10, $11, $12
+       )`,
       [
         manualOrderId,
         item.product_variant_id,
@@ -248,50 +271,40 @@ async function verifyRuntime() {
         item.cup_code,
       ],
     );
-    const outboxPayload = JSON.stringify({
-      orderId: manualOrderId,
-      orderCode: manualOrderCode,
-      orderSource: "staff_manual",
-      manualRequestId,
-      createdByUserId: staffUserId,
-      subtotal,
-      currency: item.currency,
-      itemCount: quantity,
-    });
     await client.query(
-      `
-        INSERT INTO japan_underwear.outbox_events (
-          aggregate_type, aggregate_id, event_type, payload
-        ) VALUES ('order', $1::uuid, 'order.submitted', $2::jsonb)
-      `,
-      [manualOrderId, outboxPayload],
+      `INSERT INTO japan_underwear.outbox_events
+         (aggregate_type, aggregate_id, event_type, payload)
+       VALUES ('order', $1::uuid, 'order.submitted', $2::jsonb)`,
+      [
+        manualOrderId,
+        JSON.stringify({
+          orderId: manualOrderId,
+          orderCode: manualOrderCode,
+          orderSource: "staff_manual",
+          manualRequestId,
+          createdByUserId: staffUserId,
+          subtotal,
+          currency: item.currency,
+          itemCount: quantity,
+        }),
+      ],
     );
 
     const manualState = await client.query(
-      `
-        SELECT
-          orders.order_source,
-          orders.source_cart_id,
-          orders.customer_user_id,
-          orders.created_by_user_id,
-          orders.manual_request_id,
-          orders.subtotal,
-          order_item.unit_price,
-          order_item.line_total,
-          status_event.actor_source,
-          status_event.actor_label,
-          status_event.idempotency_key,
-          outbox.payload->>'orderSource' AS outbox_source,
-          outbox.payload->>'manualRequestId' AS outbox_request
-        FROM japan_underwear.orders AS orders
-        JOIN japan_underwear.order_items AS order_item
-          ON order_item.order_id = orders.id
-        JOIN japan_underwear.order_status_events AS status_event
-          ON status_event.order_id = orders.id AND status_event.from_status IS NULL
-        JOIN japan_underwear.outbox_events AS outbox
-          ON outbox.aggregate_id = orders.id AND outbox.event_type = 'order.submitted'
-        WHERE orders.id = $1::uuid
-      `,
+      `SELECT
+         orders.order_source, orders.source_cart_id, orders.customer_user_id,
+         orders.created_by_user_id, orders.manual_request_id, orders.subtotal,
+         order_item.unit_price, order_item.line_total,
+         status_event.actor_source, status_event.actor_label,
+         outbox.payload->>'orderSource' AS outbox_source,
+         outbox.payload->>'manualRequestId' AS outbox_request
+       FROM japan_underwear.orders AS orders
+       JOIN japan_underwear.order_items AS order_item ON order_item.order_id = orders.id
+       JOIN japan_underwear.order_status_events AS status_event
+         ON status_event.order_id = orders.id AND status_event.from_status IS NULL
+       JOIN japan_underwear.outbox_events AS outbox
+         ON outbox.aggregate_id = orders.id AND outbox.event_type = 'order.submitted'
+       WHERE orders.id = $1::uuid`,
       [manualOrderId],
     );
     const state = manualState.rows[0];
@@ -315,13 +328,11 @@ async function verifyRuntime() {
 
     await expectPgError("duplicate manual request", "23505", () =>
       client.query(
-        `
-          INSERT INTO japan_underwear.orders (
-            order_code, order_source, manual_request_id, created_by_user_id,
-            status, customer_name, customer_phone, subtotal, currency
-          ) VALUES ($1, 'staff_manual', $2::uuid, $3::uuid,
-                    'submitted', 'Duplicate', '0900000001', 0, 'VND')
-        `,
+        `INSERT INTO japan_underwear.orders (
+           order_code, order_source, manual_request_id, created_by_user_id,
+           status, customer_name, customer_phone, subtotal, currency
+         ) VALUES ($1, 'staff_manual', $2::uuid, $3::uuid,
+                   'submitted', 'Duplicate', '0900000001', 0, 'VND')`,
         [
           `TT-20990101-${randomUUID().slice(0, 8).toUpperCase()}`,
           manualRequestId,
@@ -335,14 +346,12 @@ async function verifyRuntime() {
     );
     await expectPgError("manual order with source cart", "23514", () =>
       client.query(
-        `
-          INSERT INTO japan_underwear.orders (
-            order_code, order_source, source_cart_id, manual_request_id,
-            created_by_user_id, status, customer_name, customer_phone,
-            subtotal, currency
-          ) VALUES ($1, 'staff_manual', $2::uuid, $3::uuid,
-                    $4::uuid, 'submitted', 'Invalid', '0900000002', 0, 'VND')
-        `,
+        `INSERT INTO japan_underwear.orders (
+           order_code, order_source, source_cart_id, manual_request_id,
+           created_by_user_id, status, customer_name, customer_phone,
+           subtotal, currency
+         ) VALUES ($1, 'staff_manual', $2::uuid, $3::uuid,
+                   $4::uuid, 'submitted', 'Invalid', '0900000002', 0, 'VND')`,
         [
           `TT-20990101-${randomUUID().slice(0, 8).toUpperCase()}`,
           invalidCart.rows[0].id,
@@ -362,35 +371,28 @@ async function verifyRuntime() {
     const checkoutCart = await client.query(
       "INSERT INTO japan_underwear.carts (token, status) VALUES (gen_random_uuid(), 'active') RETURNING id",
     );
-    const checkoutRequestId = randomUUID();
     const checkoutOrder = await client.query(
-      `
-        INSERT INTO japan_underwear.orders (
-          order_code, source_cart_id, status, customer_store_name,
-          customer_name, customer_phone, delivery_address,
-          subtotal, currency, customer_user_id, client_request_id
-        ) VALUES (
-          $1, $2::uuid, 'submitted', 'Verifier Store',
-          'Verifier Customer', '0900000000', 'Verifier Address',
-          0, 'VND', $3::uuid, $4::uuid
-        )
-        RETURNING order_source
-      `,
+      `INSERT INTO japan_underwear.orders (
+         order_code, source_cart_id, status, customer_store_name,
+         customer_name, customer_phone, delivery_address,
+         subtotal, currency, customer_user_id, client_request_id
+       ) VALUES (
+         $1, $2::uuid, 'submitted', 'Verifier Store',
+         'Verifier Customer', '0900000000', 'Verifier Address',
+         0, 'VND', $3::uuid, $4::uuid
+       ) RETURNING order_source`,
       [
         `TT-20990101-${randomUUID().slice(0, 8).toUpperCase()}`,
         checkoutCart.rows[0].id,
         customerUserId,
-        checkoutRequestId,
+        randomUUID(),
       ],
     );
     if (checkoutOrder.rows[0]?.order_source !== "customer_checkout") {
       throw new Error("Checkout compatibility insert did not derive customer_checkout source.");
     }
-
+  } finally {
     await client.query("ROLLBACK");
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
   }
 }
 
@@ -400,7 +402,6 @@ async function main() {
   try {
     await verifySchema();
     await verifyRuntime();
-
     const counts = await client.query(`
       SELECT
         count(*) FILTER (WHERE order_source = 'legacy_cart')::integer AS legacy_orders,
@@ -408,11 +409,10 @@ async function main() {
         count(*) FILTER (WHERE order_source = 'staff_manual')::integer AS manual_orders
       FROM japan_underwear.orders
     `);
-
     console.log("Manual order shared service verification OK.");
     console.log("Shared pricing: customer checkout and staff manual call one writer.");
+    console.log("Manual selection: exact product + color + size/cup relation.");
     console.log("Manual identity: source cart null; creator + request UUID idempotent.");
-    console.log("Database source derivation preserves valid legacy checkout inserts.");
     console.log("Audit/outbox/item snapshots: verified in one rollback-only transaction.");
     console.log(
       `Current sources: legacy=${counts.rows[0].legacy_orders}; checkout=${counts.rows[0].checkout_orders}; manual=${counts.rows[0].manual_orders}.`,
