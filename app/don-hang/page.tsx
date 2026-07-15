@@ -57,16 +57,23 @@ export default async function CustomerOrdersPage() {
         <p>Theo dõi trạng thái các đơn được tạo từ tài khoản này.</p>
         <div className="orders-hero__account">
           <div>{(authorization.name ?? authorization.email ?? "K").slice(0, 1).toLocaleUpperCase("vi")}</div>
-          <span><strong>{authorization.name ?? authorization.email ?? authorization.userId}</strong>{authorization.email && authorization.name ? <small>{authorization.email}</small> : null}</span>
+          <span>
+            <strong>{authorization.name ?? authorization.email ?? authorization.userId}</strong>
+            {authorization.email && authorization.name ? <small>{authorization.email}</small> : null}
+          </span>
         </div>
       </section>
 
       {orders.length === 0 ? (
         <section className="orders-empty">
-          <div>🧾</div>
+          <span className="orders-empty__icon">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />
+            </svg>
+          </span>
           <h2>Chưa có đơn nào</h2>
-          <p>Đơn mới sẽ xuất hiện ở đây ngay sau khi checkout thành công.</p>
-          <Link href="/cua-hang">Mở cửa hàng</Link>
+          <p>Đơn mới sẽ xuất hiện ở đây ngay sau khi đặt hàng thành công.</p>
+          <Link href="/cua-hang">Xem sản phẩm</Link>
         </section>
       ) : (
         <section className="orders-list">
@@ -74,7 +81,11 @@ export default async function CustomerOrdersPage() {
             <div><span>Danh sách đơn</span><h2>{orders.length} đơn gần nhất</h2></div>
           </div>
           {orders.map((order) => (
-            <Link key={order.orderCode} href={`/don-hang/${encodeURIComponent(order.orderCode)}`} className="customer-order-card">
+            <Link
+              key={order.orderCode}
+              href={`/don-hang/${encodeURIComponent(order.orderCode)}`}
+              className="customer-order-card"
+            >
               <div className="customer-order-card__top">
                 <div><small>Mã đơn</small><strong>{order.orderCode}</strong></div>
                 <em data-status={order.status}>{STATUS_LABELS[order.status]}</em>
