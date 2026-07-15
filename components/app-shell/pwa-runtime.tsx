@@ -1,61 +1,58 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 
-const SHELL_CACHE_PREFIX = "tuan-thuy-shell-";
+function subscribeToConnection(callback: () => void) {
+  window.addEventListener("online", callback);
+  window.addEventListener("offline", callback);
 
-async function clearDevelopmentPwaState() {
-  if (!("serviceWorker" in navigator)) return;
+  return () => {
+    window.removeEventListener("online", callback);
+    window.removeEventListener("offline", callback);
+  };
+}
 
-  const registrations = await navigator.serviceWorker.getRegistrations();
-  await Promise.all(registrations.map((registration) => registration.unregister()));
+function readOnlineState() {
+  return navigator.onLine;
+}
 
-  if ("caches" in window) {
-    const keys = await caches.keys();
-    await Promise.all(
-      keys
-        .filter((key) => key.startsWith(SHELL_CACHE_PREFIX))
-        .map((key) => caches.delete(key)),
-    );
-  }
+function readServerOnlineState() {
+  return true;
 }
 
 export function PwaRuntime() {
   const pathname = usePathname();
-  const [online, setOnline] = useState(() =>
-    typeof navigator === "undefined" ? true : navigator.onLine,
+  const online = useSyncExternalStore(
+    subscribeToConnection,
+    readOnlineState,
+    readServerOnlineState,
   );
 
   useEffect(() => {
-    const markOnline = () => setOnline(true);
-    const markOffline = () => setOnline(false);
+    if (!("serviceWorker" in navigator)) return;
 
-    window.addEventListener("online", markOnline);
-    window.addEventListener("offline", markOffline);
+    if (process.env.NODE_ENV !== "production") {
+      void (async () => {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.unregister()));
 
-    if (process.env.NODE_ENV === "production") {
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/sw.js").catch((error) => {
-          console.error(
-            "Service worker registration failed:",
-            error instanceof Error ? error.message : String(error),
-          );
-        });
-      }
-    } else {
-      clearDevelopmentPwaState().catch((error) => {
-        console.error(
-          "Development PWA cleanup failed:",
-          error instanceof Error ? error.message : String(error),
+        const keys = await caches.keys();
+        await Promise.all(
+          keys
+            .filter((key) => key.startsWith("tuan-thuy-shell-"))
+            .map((key) => caches.delete(key)),
         );
-      });
+      })();
+      return;
     }
 
-    return () => {
-      window.removeEventListener("online", markOnline);
-      window.removeEventListener("offline", markOffline);
-    };
+    navigator.serviceWorker.register("/sw.js").catch((error) => {
+      console.error(
+        "Service worker registration failed:",
+        error instanceof Error ? error.message : String(error),
+      );
+    });
   }, []);
 
   if (online) return null;
