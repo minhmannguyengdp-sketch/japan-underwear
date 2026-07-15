@@ -13,6 +13,11 @@ if (!inputArgument) {
 }
 
 const reviewPath = path.resolve(process.cwd(), inputArgument);
+const outputArgument = args.find((arg) => arg.startsWith("--output="))?.slice("--output=".length);
+const outputPath = path.resolve(
+  process.cwd(),
+  outputArgument ?? inputArgument.replace(/\.json$/i, "") + ".approved.json",
+);
 const review = JSON.parse(await fs.readFile(reviewPath, "utf8"));
 validateCompleteColorEvidence(review, "review");
 
@@ -22,4 +27,11 @@ const result = spawnSync(
   { cwd: process.cwd(), encoding: "utf8", stdio: "inherit" },
 );
 if (result.error) throw result.error;
-process.exit(result.status ?? 1);
+if (result.status !== 0) process.exit(result.status ?? 1);
+
+const approved = JSON.parse(await fs.readFile(outputPath, "utf8"));
+approved.approval.observedImagesAloneDoNotProveCompleteness = true;
+approved.approval.colorSetCompletenessVerified = true;
+validateCompleteColorEvidence(approved, "approved");
+await fs.writeFile(outputPath, `${JSON.stringify(approved, null, 2)}\n`, "utf8");
+console.log("Complete color-set evidence attached to approved payload.");
