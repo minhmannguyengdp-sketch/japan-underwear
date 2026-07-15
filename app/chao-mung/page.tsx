@@ -5,15 +5,13 @@ export default function WelcomePage() {
     <main className="fashion-welcome">
       <div className="fashion-welcome__backdrop" aria-hidden="true" />
 
-      <header className="fashion-welcome__topbar">
-        <span aria-hidden="true" />
-        <Link href="/dang-nhap?callbackUrl=/tai-khoan" className="fashion-welcome__login">
-          Đăng nhập
-        </Link>
-      </header>
-
       <section className="fashion-welcome__brand">
-        <img src="/brand/pensee-logo.png" alt="Pensee" className="fashion-welcome__logo" />
+        <img
+          src="/brand/pensee-logo-clean.webp"
+          alt="Pensee"
+          className="fashion-welcome__logo"
+        />
+        <p className="fashion-welcome__eyebrow">Tuấn Thủy · Đặt hàng sỉ</p>
         <h1>
           <span>Welcome to</span>
           <strong>Pensee</strong>
@@ -23,7 +21,7 @@ export default function WelcomePage() {
           <b>✦</b>
           <span />
         </div>
-        <p>Nội y tôn vinh vẻ đẹp của bạn.</p>
+        <p className="fashion-welcome__tagline">Nội y tôn vinh vẻ đẹp của bạn.</p>
         <small>Thoải mái. Tự tin. Là chính bạn.</small>
       </section>
 
@@ -33,13 +31,20 @@ export default function WelcomePage() {
       </section>
 
       <section className="fashion-welcome__actions">
-        <Link href="/cua-hang" className="fashion-welcome__primary">
-          <span>Mua ngay</span>
+        <Link
+          href="/dang-nhap?callbackUrl=/tai-khoan"
+          className="fashion-welcome__primary"
+        >
+          <span>
+            <small>Tài khoản khách hàng</small>
+            <strong>Đăng nhập</strong>
+          </span>
           <svg aria-hidden="true" viewBox="0 0 24 24">
             <path d="M5 12h14M14 7l5 5-5 5" />
           </svg>
         </Link>
-        <Link href="/su-kien" className="fashion-welcome__secondary">
+
+        <Link href="/cua-hang" className="fashion-welcome__secondary">
           <svg aria-hidden="true" viewBox="0 0 24 24" className="fashion-welcome__hanger">
             <path d="M12 5a2 2 0 1 0-2-2M12 5v3l-8 6h16l-8-6" />
           </svg>
