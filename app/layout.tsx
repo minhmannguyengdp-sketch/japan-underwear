@@ -5,6 +5,7 @@ import { AppShellBoundary } from "@/components/app-shell/app-shell-boundary";
 import { PwaRuntime } from "@/components/app-shell/pwa-runtime";
 
 import "./globals.css";
+import "./mobile-shell-polish.css";
 
 export const metadata: Metadata = {
   title: {
