@@ -70,30 +70,16 @@ const navItems: NavItem[] = [
 const routeTitles: Array<{
   match: (pathname: string) => boolean;
   title: string;
-  subtitle: string;
 }> = [
-  {
-    match: (pathname) => pathname.startsWith("/cua-hang"),
-    title: "Sản phẩm",
-    subtitle: "Pensee · Winking",
-  },
-  {
-    match: (pathname) => pathname.startsWith("/su-kien"),
-    title: "Sự kiện",
-    subtitle: "Thông tin mới nhất",
-  },
-  {
-    match: (pathname) => pathname.startsWith("/don-hang"),
-    title: "Đơn hàng",
-    subtitle: "Theo dõi đơn sỉ",
-  },
+  { match: (pathname) => pathname.startsWith("/cua-hang"), title: "Sản phẩm" },
+  { match: (pathname) => pathname.startsWith("/su-kien"), title: "Sự kiện" },
+  { match: (pathname) => pathname.startsWith("/don-hang"), title: "Đơn hàng" },
   {
     match: (pathname) =>
       pathname.startsWith("/tai-khoan") || pathname.startsWith("/dang-nhap"),
     title: "Tài khoản",
-    subtitle: "Hồ sơ đặt hàng",
   },
-  { match: () => true, title: "Tuấn Thủy", subtitle: "Đặt hàng sỉ" },
+  { match: () => true, title: "Tuấn Thủy" },
 ];
 
 export function AppShellBoundary({ children }: { children: ReactNode }) {
@@ -118,11 +104,10 @@ export function AppShellBoundary({ children }: { children: ReactNode }) {
         <header className="public-app-header">
           <Link href="/" className="public-brand" aria-label="Về trang chủ Tuấn Thủy">
             <span className="public-brand-logo">
-              <img src="/brand/pensee-logo.png" alt="" />
+              <img src="/brand/pensee-logo-current.png" alt="" />
             </span>
             <span className="public-brand-copy">
               <strong>{routeTitle.title}</strong>
-              <small>{routeTitle.subtitle}</small>
             </span>
           </Link>
           <Link href="/tai-khoan" className="public-account-button" aria-label="Mở tài khoản">
