@@ -26,6 +26,7 @@
     "catalog:supplier:reconcile:import": "node scripts/catalog/import-tuan-thuy-supplier-color-reconciliation.mjs",
     "catalog:supplier:reconcile:verify": "node scripts/catalog/verify-tuan-thuy-supplier-color-reconciliation.mjs",
     "catalog:supplier:verify": "node scripts/catalog/verify-tuan-thuy-supplier-product-data.mjs",
+    "catalog:orderability:complete": "node scripts/catalog/complete-orderability-data.mjs",
     "catalog:owner-color:validate": "node scripts/catalog/import-tuan-thuy-owner-color-supplement.mjs",
     "catalog:owner-color:import": "node scripts/catalog/import-tuan-thuy-owner-color-supplement.mjs",
     "catalog:owner-color:verify": "node scripts/catalog/verify-tuan-thuy-owner-color-supplement.mjs",
