@@ -1,4 +1,4 @@
-const CACHE_NAME = "tuan-thuy-shell-v6";
+const CACHE_NAME = "tuan-thuy-shell-v7";
 const CACHE_PREFIX = "tuan-thuy-shell-";
 const OFFLINE_URL = "/offline";
 const STATIC_ASSETS = [
@@ -6,6 +6,7 @@ const STATIC_ASSETS = [
   "/brand/pensee-logo-current.png",
   "/brand/pensee-welcome-current.png",
   "/brand/pensee-app-background.png",
+  "/brand/japan-underwear-welcome-qr.svg",
   "/manifest.webmanifest",
 ];
 
