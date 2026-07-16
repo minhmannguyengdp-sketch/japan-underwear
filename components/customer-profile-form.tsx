@@ -30,9 +30,11 @@ function geolocationErrorMessage(error: GeolocationPositionError) {
 export function CustomerProfileForm({
   initialProfile,
   defaultContactName,
+  shopLocationAvailable,
 }: {
   initialProfile: CustomerProfile | null;
   defaultContactName: string;
+  shopLocationAvailable: boolean;
 }) {
   const [form, setForm] = useState<ProfileFormState>({
     storeName: initialProfile?.storeName ?? "",
@@ -41,13 +43,13 @@ export function CustomerProfileForm({
     deliveryAddress: initialProfile?.deliveryAddress ?? "",
   });
   const [shopLocation, setShopLocation] = useState<ShopLocation | null>(
-    initialProfile?.shopLocation ?? null,
+    shopLocationAvailable ? initialProfile?.shopLocation ?? null : null,
   );
   const [locationState, setLocationState] = useState<LocationState>(
-    initialProfile?.shopLocation ? "ready" : "idle",
+    shopLocationAvailable && initialProfile?.shopLocation ? "ready" : "idle",
   );
   const [locationMessage, setLocationMessage] = useState(
-    initialProfile?.shopLocation
+    shopLocationAvailable && initialProfile?.shopLocation
       ? `Đã lưu vị trí shop, độ chính xác khoảng ${Math.round(initialProfile.shopLocation.accuracyMeters)} m.`
       : "",
   );
@@ -56,6 +58,8 @@ export function CustomerProfileForm({
   const [error, setError] = useState("");
 
   function requestShopLocation() {
+    if (!shopLocationAvailable) return;
+
     setError("");
     setMessage("");
     setLocationMessage("");
@@ -110,10 +114,11 @@ export function CustomerProfileForm({
     setMessage("");
     setError("");
     try {
+      const payload = shopLocationAvailable ? { ...form, shopLocation } : form;
       const response = await fetch("/api/account/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, shopLocation }),
+        body: JSON.stringify(payload),
       });
       const body = (await response.json().catch(() => ({}))) as {
         profile?: CustomerProfile;
@@ -128,12 +133,14 @@ export function CustomerProfileForm({
         phone: body.profile.phone,
         deliveryAddress: body.profile.deliveryAddress,
       });
-      setShopLocation(body.profile.shopLocation);
-      setLocationState(body.profile.shopLocation ? "ready" : "idle");
+      setShopLocation(shopLocationAvailable ? body.profile.shopLocation : null);
+      setLocationState(
+        shopLocationAvailable && body.profile.shopLocation ? "ready" : "idle",
+      );
       setLocationMessage(
-        body.profile.shopLocation
+        shopLocationAvailable && body.profile.shopLocation
           ? `Đã lưu vị trí shop, độ chính xác khoảng ${Math.round(body.profile.shopLocation.accuracyMeters)} m.`
-          : "Hồ sơ chưa lưu vị trí shop.",
+          : "",
       );
       setMessage("Đã lưu hồ sơ. Đơn mới sẽ dùng thông tin này.");
     } catch (saveError) {
@@ -194,31 +201,33 @@ export function CustomerProfileForm({
         />
       </label>
 
-      <section className="profile-shop-location">
-        <div>
-          <span>Vị trí cửa hàng</span>
-          <strong>{shopLocation ? "Đã ghi nhận trên thiết bị" : "Chưa có vị trí"}</strong>
-          <p>Vị trí giúp xác nhận shop và hỗ trợ giao hàng; chỉ lưu khi bạn chủ động cấp quyền.</p>
-        </div>
-        {shopLocation ? (
-          <button type="button" onClick={clearShopLocation} className="is-remove">
-            Xóa vị trí
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={requestShopLocation}
-            disabled={locationState === "loading" || saving}
-          >
-            {locationState === "loading" ? "Đang lấy…" : "Lấy định vị shop"}
-          </button>
-        )}
-        {locationMessage ? (
-          <p className={locationState === "error" ? "is-error" : "is-ready"}>
-            {locationMessage}
-          </p>
-        ) : null}
-      </section>
+      {shopLocationAvailable ? (
+        <section className="profile-shop-location">
+          <div>
+            <span>Vị trí cửa hàng</span>
+            <strong>{shopLocation ? "Đã ghi nhận trên thiết bị" : "Chưa có vị trí"}</strong>
+            <p>Vị trí giúp xác nhận shop và hỗ trợ giao hàng; chỉ lưu khi bạn chủ động cấp quyền.</p>
+          </div>
+          {shopLocation ? (
+            <button type="button" onClick={clearShopLocation} className="is-remove">
+              Xóa vị trí
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={requestShopLocation}
+              disabled={locationState === "loading" || saving}
+            >
+              {locationState === "loading" ? "Đang lấy…" : "Lấy định vị shop"}
+            </button>
+          )}
+          {locationMessage ? (
+            <p className={locationState === "error" ? "is-error" : "is-ready"}>
+              {locationMessage}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {error ? <p className="customer-alert customer-alert--error">{error}</p> : null}
       {message ? <p className="customer-alert customer-alert--success">{message}</p> : null}
