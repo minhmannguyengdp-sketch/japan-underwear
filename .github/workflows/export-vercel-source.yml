@@ -1,0 +1,29 @@
+name: Export Vercel source
+
+on:
+  push:
+    branches:
+      - ui/mobile-app-shell-pensee
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vercel-source
+          path: |
+            .
+            !.git/**
+            !node_modules/**
+            !.next/**
+          include-hidden-files: true
+          retention-days: 1
