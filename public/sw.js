@@ -1,4 +1,4 @@
-const CACHE_NAME = "tuan-thuy-shell-v9";
+const CACHE_NAME = "tuan-thuy-shell-v10";
 const CACHE_PREFIX = "tuan-thuy-shell-";
 const OFFLINE_URL = "/offline";
 const STATIC_ASSETS = [
