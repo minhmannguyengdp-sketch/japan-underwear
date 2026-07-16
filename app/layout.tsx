@@ -9,6 +9,7 @@ import "./mobile-shell-polish.css";
 import "./welcome-screen.css";
 import "./public-shell-final.css";
 import "./storefront-polish.css";
+import "./glass-shell-polish.css";
 
 export const metadata: Metadata = {
   title: {
@@ -35,7 +36,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#5f267f",
+  themeColor: "#f0e2f4",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
