@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   package:
@@ -36,3 +37,11 @@ jobs:
             vercel-source.sha256
           if-no-files-found: error
           retention-days: 1
+
+      - name: Publish packaging run id
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment 27 \
+            --repo "${{ github.repository }}" \
+            --body "vercel-package-run-id: ${{ github.run_id }}"
