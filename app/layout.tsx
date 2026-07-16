@@ -8,6 +8,7 @@ import "./globals.css";
 import "./mobile-shell-polish.css";
 import "./welcome-screen.css";
 import "./public-shell-final.css";
+import "./storefront-polish.css";
 
 export const metadata: Metadata = {
   title: {
