@@ -39,10 +39,15 @@ type ShopPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 export default async function ShopPage({ searchParams }: ShopPageProps) {
   const params = await searchParams;
-  const rawProductId = params["san-pham"];
-  const initialProductId = Array.isArray(rawProductId) ? rawProductId[0] : rawProductId;
+  const initialProductId = firstParam(params["san-pham"]);
+  const initialCategory = firstParam(params["nhom"]);
+  const initialCartOpen = firstParam(params["gio-hang"]) === "1";
   const result = await loadCatalogPage();
 
   if (result.failed) return <StateCard failed />;
@@ -52,6 +57,8 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
     <CatalogOrdering
       products={result.products}
       initialProductId={initialProductId ?? null}
+      initialCategory={initialCategory ?? null}
+      initialCartOpen={initialCartOpen}
     />
   );
 }
