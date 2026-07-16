@@ -41,7 +41,7 @@ jobs:
             'node_modules/@img/sharp-linux-x64',
             'node_modules/@img/sharp-win32-x64',
             'node_modules/lightningcss-linux-x64-gnu',
-            'node_modules/lightningcss-win32-x64',
+            'node_modules/lightningcss-win32-x64-msvc',
           ];
 
           for (const key of required) {
