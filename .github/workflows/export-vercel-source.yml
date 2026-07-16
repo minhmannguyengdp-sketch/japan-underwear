@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - ui/mobile-app-shell-pensee
+  pull_request:
+    branches:
+      - fix/catalog-orderability-data-completion
   workflow_dispatch:
 
 permissions:
