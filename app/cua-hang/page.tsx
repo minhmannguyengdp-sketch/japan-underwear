@@ -22,15 +22,7 @@ function StateCard({ failed }: { failed: boolean }) {
   return (
     <main className="app-state-page">
       <img src="/brand/pensee-logo-transparent.svg" alt="" className="app-state-logo" />
-      <p className={`app-state-kicker ${failed ? "is-error" : ""}`}>
-        {failed ? "Lỗi kết nối dữ liệu" : "Sản phẩm chưa được nạp"}
-      </p>
-      <h1>{failed ? "Không đọc được PostgreSQL." : "Chưa có sản phẩm active."}</h1>
-      <p>
-        {failed
-          ? "Ứng dụng chưa thể kết nối dữ liệu. Hãy kiểm tra server rồi thử lại."
-          : "Danh sách sản phẩm hiện chưa có dữ liệu để hiển thị."}
-      </p>
+      <h1>{failed ? "Không tải được sản phẩm" : "Chưa có sản phẩm"}</h1>
     </main>
   );
 }
