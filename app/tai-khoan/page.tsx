@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import { signOut } from "@/auth";
 import { CustomerProfileForm } from "@/components/customer-profile-form";
 import { AuthorizationError, requireAuthenticatedUser } from "@/lib/authz";
-import { getCustomerProfile } from "@/lib/customer-profile";
+import {
+  getCustomerProfile,
+  getCustomerProfileCapabilities,
+} from "@/lib/customer-profile";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +24,10 @@ export default async function CustomerProfilePage() {
     throw error;
   }
 
-  const profile = await getCustomerProfile(authorization.userId);
+  const [profile, profileCapabilities] = await Promise.all([
+    getCustomerProfile(authorization.userId),
+    getCustomerProfileCapabilities(),
+  ]);
   const displayName = authorization.name ?? authorization.email ?? authorization.userId;
 
   return (
@@ -79,7 +85,11 @@ export default async function CustomerProfilePage() {
           Hệ thống dùng thông tin này làm snapshot cho từng đơn hàng. Hãy giữ số điện thoại,
           địa chỉ và vị trí shop luôn chính xác.
         </p>
-        <CustomerProfileForm initialProfile={profile} defaultContactName={authorization.name ?? ""} />
+        <CustomerProfileForm
+          initialProfile={profile}
+          defaultContactName={authorization.name ?? ""}
+          shopLocationAvailable={profileCapabilities.shopLocation}
+        />
       </section>
 
       <section className="account-qr-card">
