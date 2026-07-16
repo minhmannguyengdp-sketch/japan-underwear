@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
-import type { CustomerProfile } from "@/lib/customer-profile";
+import type { CustomerProfile, ShopLocation } from "@/lib/customer-profile";
 
 type ProfileFormState = {
   storeName: string;
@@ -11,6 +11,21 @@ type ProfileFormState = {
   phone: string;
   deliveryAddress: string;
 };
+
+type LocationState = "idle" | "loading" | "ready" | "error";
+
+function geolocationErrorMessage(error: GeolocationPositionError) {
+  if (error.code === error.PERMISSION_DENIED) {
+    return "Bạn đã từ chối quyền vị trí. Hãy cấp quyền trình duyệt rồi thử lại.";
+  }
+  if (error.code === error.POSITION_UNAVAILABLE) {
+    return "Thiết bị chưa xác định được vị trí. Hãy bật GPS hoặc thử lại ngoài trời.";
+  }
+  if (error.code === error.TIMEOUT) {
+    return "Lấy vị trí quá lâu. Vui lòng thử lại.";
+  }
+  return "Không lấy được vị trí cửa hàng.";
+}
 
 export function CustomerProfileForm({
   initialProfile,
@@ -25,9 +40,67 @@ export function CustomerProfileForm({
     phone: initialProfile?.phone ?? "",
     deliveryAddress: initialProfile?.deliveryAddress ?? "",
   });
+  const [shopLocation, setShopLocation] = useState<ShopLocation | null>(
+    initialProfile?.shopLocation ?? null,
+  );
+  const [locationState, setLocationState] = useState<LocationState>(
+    initialProfile?.shopLocation ? "ready" : "idle",
+  );
+  const [locationMessage, setLocationMessage] = useState(
+    initialProfile?.shopLocation
+      ? `Đã lưu vị trí shop, độ chính xác khoảng ${Math.round(initialProfile.shopLocation.accuracyMeters)} m.`
+      : "",
+  );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  function requestShopLocation() {
+    setError("");
+    setMessage("");
+    setLocationMessage("");
+
+    if (typeof window === "undefined" || !window.isSecureContext) {
+      setLocationState("error");
+      setLocationMessage("Trình duyệt chỉ cho lấy vị trí trên HTTPS hoặc localhost.");
+      return;
+    }
+    if (!("geolocation" in navigator)) {
+      setLocationState("error");
+      setLocationMessage("Thiết bị hoặc trình duyệt này không hỗ trợ định vị.");
+      return;
+    }
+
+    setLocationState("loading");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const accuracyMeters = Math.max(position.coords.accuracy, 0.01);
+        setShopLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracyMeters,
+          collectedAt: new Date(position.timestamp || Date.now()).toISOString(),
+          source: "browser_geolocation",
+        });
+        setLocationState("ready");
+        setLocationMessage(
+          `Đã lấy vị trí shop, độ chính xác khoảng ${Math.round(accuracyMeters)} m. Nhấn lưu hồ sơ để ghi nhận.`,
+        );
+      },
+      (locationError) => {
+        setShopLocation(null);
+        setLocationState("error");
+        setLocationMessage(geolocationErrorMessage(locationError));
+      },
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+    );
+  }
+
+  function clearShopLocation() {
+    setShopLocation(null);
+    setLocationState("idle");
+    setLocationMessage("Đã bỏ vị trí shop khỏi hồ sơ. Nhấn lưu để xác nhận thay đổi.");
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,7 +113,7 @@ export function CustomerProfileForm({
       const response = await fetch("/api/account/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, shopLocation }),
       });
       const body = (await response.json().catch(() => ({}))) as {
         profile?: CustomerProfile;
@@ -55,6 +128,13 @@ export function CustomerProfileForm({
         phone: body.profile.phone,
         deliveryAddress: body.profile.deliveryAddress,
       });
+      setShopLocation(body.profile.shopLocation);
+      setLocationState(body.profile.shopLocation ? "ready" : "idle");
+      setLocationMessage(
+        body.profile.shopLocation
+          ? `Đã lưu vị trí shop, độ chính xác khoảng ${Math.round(body.profile.shopLocation.accuracyMeters)} m.`
+          : "Hồ sơ chưa lưu vị trí shop.",
+      );
       setMessage("Đã lưu hồ sơ. Đơn mới sẽ dùng thông tin này.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Không lưu được hồ sơ.");
@@ -113,6 +193,32 @@ export function CustomerProfileForm({
           placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành"
         />
       </label>
+
+      <section className="profile-shop-location">
+        <div>
+          <span>Vị trí cửa hàng</span>
+          <strong>{shopLocation ? "Đã ghi nhận trên thiết bị" : "Chưa có vị trí"}</strong>
+          <p>Vị trí giúp xác nhận shop và hỗ trợ giao hàng; chỉ lưu khi bạn chủ động cấp quyền.</p>
+        </div>
+        {shopLocation ? (
+          <button type="button" onClick={clearShopLocation} className="is-remove">
+            Xóa vị trí
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={requestShopLocation}
+            disabled={locationState === "loading" || saving}
+          >
+            {locationState === "loading" ? "Đang lấy…" : "Lấy định vị shop"}
+          </button>
+        )}
+        {locationMessage ? (
+          <p className={locationState === "error" ? "is-error" : "is-ready"}>
+            {locationMessage}
+          </p>
+        ) : null}
+      </section>
 
       {error ? <p className="customer-alert customer-alert--error">{error}</p> : null}
       {message ? <p className="customer-alert customer-alert--success">{message}</p> : null}
