@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent, UIEvent } from "react";
 
 import type { CatalogProduct } from "@/lib/catalog-types";
 import type {
@@ -56,25 +56,15 @@ function coverFor(product: CatalogProduct) {
 }
 
 function blockerMessage(product: CatalogProduct) {
-  if (product.orderingBlocker === "missing-color") {
-    return "Model chưa có danh sách màu được xác nhận.";
-  }
-  if (product.orderingBlocker === "missing-size-cup") {
-    return "Model chưa có tổ hợp size/cup được xác nhận.";
-  }
-  return "Model chưa đủ dữ liệu đặt hàng.";
+  if (product.orderingBlocker === "missing-color") return "Model chưa có danh sách màu.";
+  if (product.orderingBlocker === "missing-size-cup") return "Model chưa có size/cup.";
+  return "Model chưa thể đặt.";
 }
 
 function geolocationErrorMessage(error: GeolocationPositionError) {
-  if (error.code === error.PERMISSION_DENIED) {
-    return "Bạn đã từ chối quyền vị trí. Đơn vẫn có thể tạo mà không cần định vị.";
-  }
-  if (error.code === error.POSITION_UNAVAILABLE) {
-    return "Thiết bị chưa xác định được vị trí. Hãy bật GPS hoặc thử lại ngoài trời.";
-  }
-  if (error.code === error.TIMEOUT) {
-    return "Lấy vị trí quá lâu. Vui lòng thử lại.";
-  }
+  if (error.code === error.PERMISSION_DENIED) return "Bạn đã từ chối quyền vị trí.";
+  if (error.code === error.POSITION_UNAVAILABLE) return "Thiết bị chưa xác định được vị trí.";
+  if (error.code === error.TIMEOUT) return "Lấy vị trí quá lâu. Vui lòng thử lại.";
   return "Không lấy được vị trí hiện tại.";
 }
 
@@ -99,6 +89,7 @@ export function CatalogOrdering({
       ? initialCategory
       : "";
 
+  const galleryRef = useRef<HTMLDivElement | null>(null);
   const [search, setSearch] = useState("");
   const [brand, setBrand] = useState("");
   const [category, setCategory] = useState(resolvedInitialCategory);
@@ -164,9 +155,17 @@ export function CatalogOrdering({
 
   useEffect(() => {
     if (!addedMessage) return;
-    const timer = window.setTimeout(() => setAddedMessage(""), 2600);
+    const timer = window.setTimeout(() => setAddedMessage(""), 2400);
     return () => window.clearTimeout(timer);
   }, [addedMessage]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    setImageIndex(0);
+    window.requestAnimationFrame(() => {
+      galleryRef.current?.scrollTo({ left: 0, behavior: "auto" });
+    });
+  }, [selectedId]);
 
   const brandOptions = useMemo(
     () =>
@@ -201,11 +200,8 @@ export function CatalogOrdering({
     });
   }, [brand, category, products, search]);
 
-  const orderableCount = products.filter((product) => product.orderable).length;
-
   function openProduct(product: CatalogProduct) {
     setSelectedId(product.id);
-    setImageIndex(0);
     setRows([makeRow(1)]);
     setNextRow(2);
     setError("");
@@ -223,6 +219,19 @@ export function CatalogOrdering({
     setError("");
   }
 
+  function handleGalleryScroll(event: UIEvent<HTMLDivElement>) {
+    const width = event.currentTarget.clientWidth;
+    if (width <= 0) return;
+    const nextIndex = Math.round(event.currentTarget.scrollLeft / width);
+    if (nextIndex !== imageIndex) setImageIndex(nextIndex);
+  }
+
+  function scrollGalleryTo(index: number) {
+    const gallery = galleryRef.current;
+    if (!gallery) return;
+    gallery.scrollTo({ left: gallery.clientWidth * index, behavior: "smooth" });
+  }
+
   async function addRowsToCart() {
     if (!selected || !selected.orderable || cartBusy) return;
 
@@ -238,7 +247,7 @@ export function CatalogOrdering({
           !row.colorId || !row.variantId || row.quantity < 1 || !color || !variant,
       )
     ) {
-      setError("Chọn đủ màu, size/cup và số lượng cho từng dòng.");
+      setError("Chọn đủ màu, size/cup và số lượng.");
       return;
     }
 
@@ -266,7 +275,7 @@ export function CatalogOrdering({
       setCheckoutRequestId(crypto.randomUUID());
       setSelectedId(null);
       setCartOpen(false);
-      setAddedMessage(`Đã thêm ${addedQuantity} × ${addedProductName}. Tiếp tục chọn mã khác.`);
+      setAddedMessage(`Đã thêm ${addedQuantity} × ${addedProductName} vào giỏ.`);
     } catch (addError) {
       setError(addError instanceof Error ? addError.message : "Không thêm được vào giỏ.");
     } finally {
@@ -304,12 +313,12 @@ export function CatalogOrdering({
 
     if (typeof window === "undefined" || !window.isSecureContext) {
       setLocationState("error");
-      setLocationMessage("Trình duyệt chỉ cho lấy vị trí trên HTTPS hoặc localhost.");
+      setLocationMessage("Định vị cần HTTPS hoặc localhost.");
       return;
     }
     if (!("geolocation" in navigator)) {
       setLocationState("error");
-      setLocationMessage("Thiết bị hoặc trình duyệt này không hỗ trợ định vị.");
+      setLocationMessage("Thiết bị không hỗ trợ định vị.");
       return;
     }
 
@@ -325,7 +334,7 @@ export function CatalogOrdering({
           source: "browser_geolocation",
         });
         setLocationState("ready");
-        setLocationMessage(`Đã lấy vị trí, độ chính xác khoảng ${Math.round(accuracyMeters)} m.`);
+        setLocationMessage(`Đã lấy vị trí · khoảng ${Math.round(accuracyMeters)} m.`);
       },
       (locationError) => {
         setCheckoutLocation(null);
@@ -339,7 +348,7 @@ export function CatalogOrdering({
   function clearCheckoutLocation() {
     setCheckoutLocation(null);
     setLocationState("idle");
-    setLocationMessage("Đã bỏ vị trí khỏi đơn hàng.");
+    setLocationMessage("Đã xóa vị trí.");
   }
 
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
@@ -394,11 +403,7 @@ export function CatalogOrdering({
       ) : null}
 
       <section className="shop-heading">
-        <div>
-          <span className="customer-kicker">Pensee · Winking</span>
-          <h1>Sản phẩm</h1>
-          <p>{orderableCount}/{products.length} model đang có thể đặt hàng.</p>
-        </div>
+        <h1>Sản phẩm</h1>
       </section>
 
       <section className="shop-controls" aria-label="Tìm và lọc sản phẩm">
@@ -410,7 +415,7 @@ export function CatalogOrdering({
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Tìm mã, tên hoặc thương hiệu"
+            placeholder="Tìm mã hoặc tên"
           />
         </label>
         <div className="shop-filter-row">
@@ -440,7 +445,7 @@ export function CatalogOrdering({
       <section className="shop-results">
         <div className="shop-results__meta">
           <strong>{visible.length} sản phẩm</strong>
-          {(search || brand || category) ? (
+          {search || brand || category ? (
             <button
               type="button"
               onClick={() => {
@@ -449,7 +454,7 @@ export function CatalogOrdering({
                 setCategory("");
               }}
             >
-              Xóa bộ lọc
+              Xóa lọc
             </button>
           ) : null}
         </div>
@@ -457,7 +462,6 @@ export function CatalogOrdering({
         {visible.length === 0 ? (
           <div className="customer-empty-card">
             <strong>Không tìm thấy sản phẩm</strong>
-            <p>Thử đổi từ khóa hoặc xóa bộ lọc hiện tại.</p>
           </div>
         ) : (
           <div className="shop-product-grid">
@@ -473,7 +477,7 @@ export function CatalogOrdering({
                   <div className="shop-product-card__image">
                     {cover?.src ? <img src={cover.src} alt={cover.alt} /> : <span>Chưa có ảnh</span>}
                     <em className={product.orderable ? "is-ready" : "is-waiting"}>
-                      {product.orderable ? "Có thể đặt" : "Chờ dữ liệu"}
+                      {product.orderable ? "Có thể đặt" : "Sắp có"}
                     </em>
                   </div>
                   <div className="shop-product-card__body">
@@ -523,27 +527,37 @@ export function CatalogOrdering({
 
             <div className="customer-sheet__body product-sheet__body">
               <section className="product-gallery">
-                <div className="product-gallery__main">
-                  {selected.images[imageIndex]?.src ? (
-                    <img
-                      src={selected.images[imageIndex].src ?? ""}
-                      alt={selected.images[imageIndex].alt}
-                    />
+                <div
+                  ref={galleryRef}
+                  className="product-gallery__main no-scrollbar"
+                  onScroll={handleGalleryScroll}
+                >
+                  {selected.images.length > 0 ? (
+                    selected.images.map((image) => (
+                      <div key={image.id} className="product-gallery__slide">
+                        {image.src ? (
+                          <img src={image.src} alt={image.alt} />
+                        ) : (
+                          <span>Chưa có ảnh</span>
+                        )}
+                      </div>
+                    ))
                   ) : (
-                    <span>Chưa có ảnh sản phẩm</span>
+                    <div className="product-gallery__slide">
+                      <span>Chưa có ảnh</span>
+                    </div>
                   )}
                 </div>
                 {selected.images.length > 1 ? (
-                  <div className="product-gallery__thumbs no-scrollbar">
+                  <div className="product-gallery__dots" aria-label="Vị trí ảnh">
                     {selected.images.map((image, index) => (
                       <button
                         key={image.id}
                         type="button"
                         className={index === imageIndex ? "is-active" : undefined}
-                        onClick={() => setImageIndex(index)}
-                      >
-                        {image.src ? <img src={image.src} alt="" /> : null}
-                      </button>
+                        onClick={() => scrollGalleryTo(index)}
+                        aria-label={`Ảnh ${index + 1}`}
+                      />
                     ))}
                   </div>
                 ) : null}
@@ -553,7 +567,7 @@ export function CatalogOrdering({
                 <small>{selected.category ?? "Sản phẩm"}</small>
                 <h2>{selected.name}</h2>
                 <strong className="product-info__price">{formatVnd(selected.price)}</strong>
-                <p>{selected.description ?? "Thông tin sản phẩm đang được cập nhật."}</p>
+                {selected.description ? <p>{selected.description}</p> : null}
                 <div className="product-info__facts">
                   <span>{selected.colors.length} màu</span>
                   <span>{selected.variants.length} size/cup</span>
@@ -568,10 +582,7 @@ export function CatalogOrdering({
               ) : (
                 <section className="product-selection">
                   <div className="product-selection__heading">
-                    <div>
-                      <small>Chọn phân loại</small>
-                      <h3>Màu, size/cup và số lượng</h3>
-                    </div>
+                    <h3>Màu, size/cup và số lượng</h3>
                     <span>{rows.length} dòng</span>
                   </div>
                   <div className="product-selection__rows">
@@ -671,11 +682,6 @@ export function CatalogOrdering({
               {createdOrder ? (
                 <section className="order-success">
                   <div className="order-success__icon">✓</div>
-                  <small>
-                    {createdOrder.idempotentReplay
-                      ? "Đơn đã được xác nhận trước đó"
-                      : "Đơn đã được tạo"}
-                  </small>
                   <h2>{createdOrder.orderCode}</h2>
                   <p>{createdOrder.itemCount} sản phẩm · {formatVnd(createdOrder.subtotal)}</p>
                   <div className="order-success__actions">
@@ -689,7 +695,7 @@ export function CatalogOrdering({
                         setCartOpen(false);
                       }}
                     >
-                      Tiếp tục xem sản phẩm
+                      Tiếp tục mua
                     </button>
                   </div>
                 </section>
@@ -701,9 +707,8 @@ export function CatalogOrdering({
                     </svg>
                   </span>
                   <h2>Giỏ hàng đang trống</h2>
-                  <p>Chọn sản phẩm, màu và size/cup để bắt đầu đơn sỉ.</p>
                   <button type="button" onClick={() => setCartOpen(false)}>
-                    Quay lại sản phẩm
+                    Quay lại
                   </button>
                 </section>
               ) : (
@@ -765,7 +770,7 @@ export function CatalogOrdering({
                     <Link href="/tai-khoan" className="checkout-profile-link">
                       <div>
                         <small>Thông tin giao hàng</small>
-                        <strong>Dùng hồ sơ đã lưu trên server</strong>
+                        <strong>Thông tin đã lưu</strong>
                       </div>
                       <span>Kiểm tra →</span>
                     </Link>
@@ -773,7 +778,6 @@ export function CatalogOrdering({
                       <div>
                         <small>Vị trí hiện tại</small>
                         <strong>Tùy chọn</strong>
-                        <p>Chỉ được lưu khi bạn chủ động cấp quyền.</p>
                       </div>
                       {checkoutLocation ? (
                         <button type="button" onClick={clearCheckoutLocation} className="is-remove">
@@ -802,7 +806,7 @@ export function CatalogOrdering({
                         onChange={(event) =>
                           setCheckout((current) => ({ ...current, note: event.target.value }))
                         }
-                        placeholder="Ví dụ: giao giờ hành chính…"
+                        placeholder="Ghi chú"
                       />
                     </label>
                     {checkoutError ? (
