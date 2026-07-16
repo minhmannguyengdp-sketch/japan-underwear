@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { HeaderCartButton } from "@/components/app-shell/header-cart-button";
+
 type NavItem = {
   href: string;
   label: string;
@@ -110,12 +112,15 @@ export function AppShellBoundary({ children }: { children: ReactNode }) {
               <strong>{routeTitle.title}</strong>
             </span>
           </Link>
-          <Link href="/tai-khoan" className="public-account-button" aria-label="Mở tài khoản">
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <circle cx="12" cy="8" r="4" />
-              <path d="M5 21a7 7 0 0 1 14 0" />
-            </svg>
-          </Link>
+          <div className="public-header-actions">
+            <HeaderCartButton />
+            <Link href="/tai-khoan" className="public-account-button" aria-label="Mở tài khoản">
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M5 21a7 7 0 0 1 14 0" />
+              </svg>
+            </Link>
+          </div>
         </header>
 
         <div className="public-app-canvas">{children}</div>
