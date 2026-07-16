@@ -15,6 +15,8 @@ type HomeCategory = {
   label: string;
   title: string;
   description: string;
+  campaignTitle: string;
+  campaignCopy: string;
   tone: "lilac" | "rose" | "plum";
 };
 
@@ -24,6 +26,8 @@ const HOME_CATEGORIES: HomeCategory[] = [
     label: "Áo ngực",
     title: "Phom nâng đỡ cho từng dáng mặc",
     description: "Các mẫu Pensee và Winking có hình ảnh, màu và size/cup rõ ràng.",
+    campaignTitle: "Nâng đỡ mềm mại, phom đẹp tự nhiên",
+    campaignCopy: "Khám phá dòng áo ngực dành cho nhu cầu mặc hằng ngày và lên đơn sỉ.",
     tone: "lilac",
   },
   {
@@ -31,6 +35,8 @@ const HOME_CATEGORIES: HomeCategory[] = [
     label: "Quần lót",
     title: "Nhẹ, gọn và dễ phối theo bộ",
     description: "Tách riêng nhóm quần để tìm mẫu nhanh hơn khi lên đơn sỉ.",
+    campaignTitle: "Nhẹ nhàng trong từng chuyển động",
+    campaignCopy: "Bộ sưu tập quần lót được sắp theo nhóm để chọn nhanh và phối đồng bộ.",
     tone: "rose",
   },
   {
@@ -38,6 +44,8 @@ const HOME_CATEGORIES: HomeCategory[] = [
     label: "Quần gen",
     title: "Định hình gọn cho nhu cầu chuyên biệt",
     description: "Nhóm sản phẩm gen được trình bày riêng, không trộn với quần lót thường.",
+    campaignTitle: "Định hình tinh tế, tự tin cả ngày",
+    campaignCopy: "Xem riêng các mẫu gen và sản phẩm định hình khi dữ liệu nguồn được bổ sung.",
     tone: "plum",
   },
 ];
@@ -64,21 +72,21 @@ function coverFor(product: CatalogProduct) {
   return product.images.find((image) => image.isCover) ?? product.images[0] ?? null;
 }
 
-function ProductTile({ product, featured = false }: { product: CatalogProduct; featured?: boolean }) {
+function ProductTile({ product }: { product: CatalogProduct }) {
   const cover = coverFor(product);
 
   return (
     <Link
       href={`/cua-hang?san-pham=${encodeURIComponent(product.id)}`}
-      className={featured ? "home-category-feature" : "home-category-card"}
+      className="home-category-card"
     >
-      <div className={featured ? "home-category-feature__image" : "home-category-card__image"}>
+      <div className="home-category-card__image">
         {cover?.src ? <img src={cover.src} alt={cover.alt} /> : <span>Chưa có ảnh</span>}
         <em className={product.orderable ? "is-ready" : "is-waiting"}>
           {product.orderable ? "Có thể đặt" : "Đang bổ sung"}
         </em>
       </div>
-      <div className={featured ? "home-category-feature__body" : "home-category-card__body"}>
+      <div className="home-category-card__body">
         <small>{product.brand} · {product.code}</small>
         <strong>{product.name}</strong>
         <b>{formatVnd(product.price)}</b>
@@ -98,9 +106,15 @@ export default async function HomePage() {
         <p>Catalog được chia rõ theo áo ngực, quần lót và quần gen để thao tác nhanh trên điện thoại.</p>
       </section>
 
-      <section className="home-campaign-slot" aria-label="Vị trí ảnh chiến dịch đang chờ cập nhật">
-        <span aria-hidden="true" />
-      </section>
+      <Link href="/cua-hang" className="home-hero" aria-label="Khám phá bộ sưu tập Pensee">
+        <img src="/brand/pensee-welcome-current.png" alt="Bộ sưu tập Pensee" />
+        <span className="home-hero__veil" aria-hidden="true" />
+        <div className="home-hero__copy">
+          <span>Bộ sưu tập Pensee</span>
+          <strong>Đặt hàng sỉ ngay trên điện thoại</strong>
+          <small>Xem sản phẩm →</small>
+        </div>
+      </Link>
 
       {failed ? (
         <section className="customer-empty-card home-catalog-error">
@@ -109,11 +123,12 @@ export default async function HomePage() {
         </section>
       ) : (
         HOME_CATEGORIES.map((category) => {
-          const categoryProducts = products.filter(
-            (product) => product.categorySlug === category.slug && Boolean(coverFor(product)?.src),
-          );
-          const featured = categoryProducts[0] ?? null;
-          const preview = categoryProducts.slice(1, 4);
+          const categoryProducts = products
+            .filter(
+              (product) =>
+                product.categorySlug === category.slug && Boolean(coverFor(product)?.src),
+            )
+            .slice(0, 3);
 
           return (
             <section
@@ -126,29 +141,42 @@ export default async function HomePage() {
                   <h2>{category.title}</h2>
                   <p>{category.description}</p>
                 </div>
-                <b>{categoryProducts.length}</b>
+                <b>{products.filter((product) => product.categorySlug === category.slug).length}</b>
               </header>
 
-              {featured ? (
-                <>
-                  <ProductTile product={featured} featured />
-                  {preview.length > 0 ? (
-                    <div className="home-category-grid">
-                      {preview.map((product) => (
-                        <ProductTile key={product.id} product={product} />
-                      ))}
-                    </div>
-                  ) : null}
-                </>
+              <Link
+                href={`/cua-hang?nhom=${encodeURIComponent(category.slug)}`}
+                className="home-category-banner"
+                aria-label={`Xem bộ sưu tập ${category.label}`}
+              >
+                <img src="/brand/pensee-app-background.png" alt="" />
+                <span className="home-category-banner__glow" aria-hidden="true" />
+                <div>
+                  <small>{category.label}</small>
+                  <strong>{category.campaignTitle}</strong>
+                  <p>{category.campaignCopy}</p>
+                  <b>Xem bộ sưu tập →</b>
+                </div>
+              </Link>
+
+              {categoryProducts.length > 0 ? (
+                <div className="home-category-grid">
+                  {categoryProducts.map((product) => (
+                    <ProductTile key={product.id} product={product} />
+                  ))}
+                </div>
               ) : (
                 <div className="home-category-empty">
-                  <strong>Chưa có ảnh đại diện</strong>
-                  <p>Nhóm này sẽ được hoàn thiện sau khi dữ liệu nguồn được bổ sung.</p>
+                  <strong>Chưa có sản phẩm có ảnh</strong>
+                  <p>Banner chủng loại vẫn hoạt động; card sản phẩm sẽ xuất hiện khi dữ liệu nguồn sẵn sàng.</p>
                 </div>
               )}
 
-              <Link href="/cua-hang" className="home-category-section__link">
-                Xem toàn bộ sản phẩm
+              <Link
+                href={`/cua-hang?nhom=${encodeURIComponent(category.slug)}`}
+                className="home-category-section__link"
+              >
+                Xem toàn bộ {category.label.toLocaleLowerCase("vi")}
                 <span aria-hidden="true">→</span>
               </Link>
             </section>
