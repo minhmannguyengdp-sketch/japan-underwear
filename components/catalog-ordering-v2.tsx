@@ -229,6 +229,7 @@ export function CatalogOrdering({
   function scrollGalleryTo(index: number) {
     const gallery = galleryRef.current;
     if (!gallery) return;
+    setImageIndex(index);
     gallery.scrollTo({ left: gallery.clientWidth * index, behavior: "smooth" });
   }
 
@@ -549,15 +550,18 @@ export function CatalogOrdering({
                   )}
                 </div>
                 {selected.images.length > 1 ? (
-                  <div className="product-gallery__dots" aria-label="Vị trí ảnh">
+                  <div className="product-gallery__thumbs no-scrollbar" aria-label="Chọn ảnh sản phẩm">
                     {selected.images.map((image, index) => (
                       <button
                         key={image.id}
                         type="button"
                         className={index === imageIndex ? "is-active" : undefined}
                         onClick={() => scrollGalleryTo(index)}
-                        aria-label={`Ảnh ${index + 1}`}
-                      />
+                        aria-label={`Xem ảnh ${index + 1}`}
+                        aria-current={index === imageIndex ? "true" : undefined}
+                      >
+                        {image.src ? <img src={image.src} alt="" /> : <span>{index + 1}</span>}
+                      </button>
                     ))}
                   </div>
                 ) : null}

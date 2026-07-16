@@ -9,10 +9,13 @@ export default function WelcomePage() {
 
       <section className="fashion-welcome__brand">
         <img
-          src="/brand/pensee-logo-transparent.svg"
+          src="/brand/pensee-logo-current.png"
           alt="Pensee"
           className="fashion-welcome__logo"
         />
+        <p className="fashion-welcome__slogan">
+          Nội y tôn vinh vẻ đẹp và sự tự tin của bạn.
+        </p>
       </section>
 
       <section className="fashion-welcome__visual" aria-label="Bộ sưu tập Pensee">

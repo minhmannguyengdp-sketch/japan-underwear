@@ -7,11 +7,12 @@
   height: calc(var(--app-header-height) + var(--safe-top));
   align-items: center;
   padding: var(--safe-top) 12px 0;
-  border-bottom-color: rgba(255, 255, 255, 0.18);
+  border-bottom-color: rgba(255, 255, 255, 0.2);
   background:
-    linear-gradient(135deg, rgba(119, 47, 146, 0.88), rgba(75, 20, 96, 0.76));
-  box-shadow: 0 8px 22px rgba(55, 15, 70, 0.16);
-  backdrop-filter: blur(20px) saturate(1.25);
+    linear-gradient(135deg, rgba(119, 47, 146, 0.54), rgba(75, 20, 96, 0.36));
+  box-shadow: 0 8px 22px rgba(55, 15, 70, 0.1);
+  -webkit-backdrop-filter: blur(24px) saturate(1.35);
+  backdrop-filter: blur(24px) saturate(1.35);
 }
 
 .public-brand {
@@ -19,13 +20,25 @@
 }
 
 .public-brand-logo {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
-.public-brand-logo img,
+.public-brand-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: scale(1.12);
+  mix-blend-mode: multiply !important;
+}
+
 .fashion-welcome__logo {
-  mix-blend-mode: normal !important;
+  mix-blend-mode: multiply !important;
 }
 
 .public-brand-copy strong {
@@ -79,11 +92,12 @@
   min-height: calc(var(--app-nav-height) + var(--safe-bottom));
   align-items: start;
   padding: 5px 6px calc(5px + var(--safe-bottom));
-  border-top-color: rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.2);
   background:
-    linear-gradient(135deg, rgba(103, 36, 129, 0.9), rgba(65, 16, 84, 0.8));
-  box-shadow: 0 -9px 25px rgba(49, 11, 63, 0.16);
-  backdrop-filter: blur(20px) saturate(1.25);
+    linear-gradient(135deg, rgba(103, 36, 129, 0.56), rgba(65, 16, 84, 0.38));
+  box-shadow: 0 -9px 25px rgba(49, 11, 63, 0.1);
+  -webkit-backdrop-filter: blur(24px) saturate(1.35);
+  backdrop-filter: blur(24px) saturate(1.35);
 }
 
 .public-bottom-nav a {
@@ -252,20 +266,41 @@
 }
 
 .fashion-welcome__brand {
-  min-height: 62px;
+  min-height: 84px;
 }
 
 .fashion-welcome__logo {
-  width: clamp(142px, 42vw, 176px);
-  height: 62px;
+  width: clamp(146px, 44vw, 184px);
+  height: 58px;
+  object-fit: contain;
   filter: drop-shadow(0 8px 16px rgba(73, 28, 87, 0.08));
 }
 
+.fashion-welcome__slogan {
+  max-width: 310px;
+  margin: 2px auto 0;
+  color: #6d5573;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .fashion-welcome__visual {
-  min-height: 250px;
-  flex: 1 1 330px;
-  margin-top: 2px;
-  border-radius: 28px;
+  height: clamp(230px, 43dvh, 330px);
+  min-height: 0;
+  flex: 0 1 auto;
+  margin: 4px 0 0;
+  border-radius: 26px;
+}
+
+.fashion-welcome__hero-image {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  object-position: center;
+  transform: none;
 }
 
 .fashion-welcome__visual::before {
@@ -277,7 +312,7 @@
 }
 
 .fashion-welcome__panel {
-  margin: -22px 3px 0;
+  margin: -12px 3px 0;
   padding: 12px;
   border-radius: 22px;
 }
@@ -395,28 +430,41 @@
   object-fit: contain;
 }
 
-.product-gallery__dots {
+.product-gallery__thumbs {
   display: flex;
-  min-height: 24px;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding-top: 7px;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 9px 2px 3px;
+  scroll-snap-type: x proximity;
 }
 
-.product-gallery__dots button {
-  width: 6px;
-  height: 6px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(102, 54, 115, 0.24);
-  transition: width 150ms ease, background 150ms ease;
+.product-gallery__thumbs button {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  overflow: hidden;
+  padding: 2px;
+  place-items: center;
+  border: 1px solid rgba(100, 54, 113, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #7b6980;
+  scroll-snap-align: start;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
 
-.product-gallery__dots button.is-active {
-  width: 18px;
-  background: #732b8b;
+.product-gallery__thumbs button img {
+  width: 100%;
+  height: 100%;
+  border-radius: 9px;
+  object-fit: contain;
+}
+
+.product-gallery__thumbs button.is-active {
+  border-color: #732b8b;
+  box-shadow: 0 0 0 2px rgba(115, 43, 139, 0.14);
+  transform: translateY(-1px);
 }
 
 .product-info,
@@ -458,22 +506,28 @@
   }
 
   .fashion-welcome__visual {
-    min-height: 220px;
+    height: 220px;
+    min-height: 0;
   }
 }
 
 @media (max-height: 690px) {
   .fashion-welcome__brand {
-    min-height: 52px;
+    min-height: 68px;
   }
 
   .fashion-welcome__logo {
-    width: 128px;
-    height: 52px;
+    width: 132px;
+    height: 46px;
+  }
+
+  .fashion-welcome__slogan {
+    font-size: 11px;
   }
 
   .fashion-welcome__visual {
-    min-height: 190px;
+    height: 190px;
+    min-height: 0;
     margin-top: 0;
   }
 
