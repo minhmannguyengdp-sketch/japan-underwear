@@ -27,6 +27,8 @@ type LocationState = "idle" | "loading" | "ready" | "error";
 type CatalogOrderingProps = {
   products: CatalogProduct[];
   initialProductId?: string | null;
+  initialCategory?: string | null;
+  initialCartOpen?: boolean;
 };
 
 const EMPTY_CART: ServerCart = {
@@ -85,23 +87,29 @@ async function readJson<T>(response: Response): Promise<T> {
 export function CatalogOrdering({
   products,
   initialProductId = null,
+  initialCategory = null,
+  initialCartOpen = false,
 }: CatalogOrderingProps) {
   const initialSelection =
     initialProductId && products.some((product) => product.id === initialProductId)
       ? initialProductId
       : null;
+  const resolvedInitialCategory =
+    initialCategory && products.some((product) => product.categorySlug === initialCategory)
+      ? initialCategory
+      : "";
 
   const [search, setSearch] = useState("");
   const [brand, setBrand] = useState("");
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState(resolvedInitialCategory);
   const [selectedId, setSelectedId] = useState<string | null>(initialSelection);
   const [imageIndex, setImageIndex] = useState(0);
   const [rows, setRows] = useState<SelectionRow[]>([makeRow(1)]);
   const [nextRow, setNextRow] = useState(2);
   const [error, setError] = useState("");
-  const [cartOpen, setCartOpen] = useState(false);
+  const [addedMessage, setAddedMessage] = useState("");
+  const [cartOpen, setCartOpen] = useState(initialCartOpen);
   const [cart, setCart] = useState<ServerCart>(EMPTY_CART);
-  const [cartLoading, setCartLoading] = useState(true);
   const [cartBusy, setCartBusy] = useState(false);
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState("");
@@ -114,28 +122,51 @@ export function CatalogOrdering({
 
   const selected = products.find((product) => product.id === selectedId) ?? null;
 
+  function applyCart(nextCart: ServerCart) {
+    setCart(nextCart);
+    window.dispatchEvent(
+      new CustomEvent("cart:updated", {
+        detail: { quantity: nextCart.quantity },
+      }),
+    );
+  }
+
   useEffect(() => {
     let cancelled = false;
+
     async function loadCart() {
       try {
         const response = await fetch("/api/cart", { cache: "no-store" });
         const body = await readJson<{ cart: ServerCart }>(response);
-        if (!cancelled) setCart(body.cart);
+        if (!cancelled) applyCart(body.cart);
       } catch (loadError) {
         if (!cancelled) {
           setCheckoutError(
             loadError instanceof Error ? loadError.message : "Không đọc được giỏ hàng.",
           );
         }
-      } finally {
-        if (!cancelled) setCartLoading(false);
       }
     }
+
+    function handleOpenCart() {
+      setSelectedId(null);
+      setCartOpen(true);
+    }
+
     void loadCart();
+    window.addEventListener("cart:open", handleOpenCart);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("cart:open", handleOpenCart);
     };
   }, []);
+
+  useEffect(() => {
+    if (!addedMessage) return;
+    const timer = window.setTimeout(() => setAddedMessage(""), 2600);
+    return () => window.clearTimeout(timer);
+  }, [addedMessage]);
 
   const brandOptions = useMemo(
     () =>
@@ -211,9 +242,13 @@ export function CatalogOrdering({
       return;
     }
 
+    const addedQuantity = resolved.reduce((total, item) => total + item.row.quantity, 0);
+    const addedProductName = selected.name;
+
     setCartBusy(true);
     setError("");
     setCreatedOrder(null);
+
     try {
       const response = await fetch("/api/cart/items", {
         method: "POST",
@@ -227,10 +262,11 @@ export function CatalogOrdering({
         }),
       });
       const body = await readJson<{ cart: ServerCart }>(response);
-      setCart(body.cart);
+      applyCart(body.cart);
       setCheckoutRequestId(crypto.randomUUID());
       setSelectedId(null);
-      setCartOpen(true);
+      setCartOpen(false);
+      setAddedMessage(`Đã thêm ${addedQuantity} × ${addedProductName}. Tiếp tục chọn mã khác.`);
     } catch (addError) {
       setError(addError instanceof Error ? addError.message : "Không thêm được vào giỏ.");
     } finally {
@@ -242,6 +278,7 @@ export function CatalogOrdering({
     if (busyItemId) return;
     setBusyItemId(itemId);
     setCheckoutError("");
+
     try {
       const deleting = quantity < 1;
       const response = await fetch(`/api/cart/items/${itemId}`, {
@@ -250,7 +287,7 @@ export function CatalogOrdering({
         body: deleting ? undefined : JSON.stringify({ quantity }),
       });
       const body = await readJson<{ cart: ServerCart }>(response);
-      setCart(body.cart);
+      applyCart(body.cart);
       setCheckoutRequestId(crypto.randomUUID());
     } catch (updateError) {
       setCheckoutError(
@@ -308,10 +345,12 @@ export function CatalogOrdering({
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (cart.items.length === 0 || cartBusy) return;
+
     setCartBusy(true);
     setCheckoutError("");
     const requestId = checkoutRequestId || crypto.randomUUID();
     if (!checkoutRequestId) setCheckoutRequestId(requestId);
+
     try {
       const response = await fetch("/api/orders", {
         method: "POST",
@@ -324,7 +363,7 @@ export function CatalogOrdering({
       });
       const body = await readJson<{ order: CreatedOrder }>(response);
       setCreatedOrder(body.order);
-      setCart(EMPTY_CART);
+      applyCart(EMPTY_CART);
       setCheckoutRequestId("");
       setCheckout({ note: "" });
       setCheckoutLocation(null);
@@ -341,18 +380,25 @@ export function CatalogOrdering({
 
   return (
     <main className="customer-shop">
+      {addedMessage ? (
+        <button
+          type="button"
+          className="cart-added-toast"
+          onClick={() => setCartOpen(true)}
+          aria-label="Mở giỏ hàng"
+        >
+          <span>✓</span>
+          <strong>{addedMessage}</strong>
+          <small>Xem giỏ</small>
+        </button>
+      ) : null}
+
       <section className="shop-heading">
         <div>
           <span className="customer-kicker">Pensee · Winking</span>
           <h1>Sản phẩm</h1>
           <p>{orderableCount}/{products.length} model đang có thể đặt hàng.</p>
         </div>
-        <button type="button" className="shop-cart-button" onClick={() => setCartOpen(true)}>
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <path d="M3 4h2l2 11h10l3-8H6M9 20h.01M17 20h.01" />
-          </svg>
-          <span>{cartLoading ? "…" : cart.quantity}</span>
-        </button>
       </section>
 
       <section className="shop-controls" aria-label="Tìm và lọc sản phẩm">
@@ -368,13 +414,21 @@ export function CatalogOrdering({
           />
         </label>
         <div className="shop-filter-row">
-          <select value={brand} onChange={(event) => setBrand(event.target.value)} aria-label="Lọc thương hiệu">
+          <select
+            value={brand}
+            onChange={(event) => setBrand(event.target.value)}
+            aria-label="Lọc thương hiệu"
+          >
             <option value="">Tất cả thương hiệu</option>
             {brandOptions.map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Lọc nhóm hàng">
+          <select
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+            aria-label="Lọc nhóm hàng"
+          >
             <option value="">Tất cả nhóm hàng</option>
             {categoryOptions.map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
@@ -386,11 +440,18 @@ export function CatalogOrdering({
       <section className="shop-results">
         <div className="shop-results__meta">
           <strong>{visible.length} sản phẩm</strong>
-          {(search || brand || category) && (
-            <button type="button" onClick={() => { setSearch(""); setBrand(""); setCategory(""); }}>
+          {(search || brand || category) ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setBrand("");
+                setCategory("");
+              }}
+            >
               Xóa bộ lọc
             </button>
-          )}
+          ) : null}
         </div>
 
         {visible.length === 0 ? (
@@ -428,19 +489,34 @@ export function CatalogOrdering({
         )}
       </section>
 
-      {selected && (
-        <div className="customer-sheet-layer" role="dialog" aria-modal="true" aria-label={`Chi tiết ${selected.name}`}>
+      {selected ? (
+        <div
+          className="customer-sheet-layer"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Chi tiết ${selected.name}`}
+        >
           <div className="customer-sheet product-sheet">
             <header className="customer-sheet__header">
-              <button type="button" onClick={() => setSelectedId(null)} aria-label="Đóng chi tiết">←</button>
-              <div><small>{selected.brand} · {selected.code}</small><strong>Chi tiết sản phẩm</strong></div>
+              <button type="button" onClick={() => setSelectedId(null)} aria-label="Đóng chi tiết">
+                ←
+              </button>
+              <div>
+                <small>{selected.brand} · {selected.code}</small>
+                <strong>Chi tiết sản phẩm</strong>
+              </div>
               <button
                 type="button"
-                onClick={() => { setSelectedId(null); setCartOpen(true); }}
+                onClick={() => {
+                  setSelectedId(null);
+                  setCartOpen(true);
+                }}
                 aria-label="Mở giỏ hàng"
                 className="sheet-cart-icon"
               >
-                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4h2l2 11h10l3-8H6" /></svg>
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="M3 4h2l2 11h10l3-8H6" />
+                </svg>
                 <span>{cart.quantity}</span>
               </button>
             </header>
@@ -449,10 +525,15 @@ export function CatalogOrdering({
               <section className="product-gallery">
                 <div className="product-gallery__main">
                   {selected.images[imageIndex]?.src ? (
-                    <img src={selected.images[imageIndex].src ?? ""} alt={selected.images[imageIndex].alt} />
-                  ) : <span>Chưa có ảnh sản phẩm</span>}
+                    <img
+                      src={selected.images[imageIndex].src ?? ""}
+                      alt={selected.images[imageIndex].alt}
+                    />
+                  ) : (
+                    <span>Chưa có ảnh sản phẩm</span>
+                  )}
                 </div>
-                {selected.images.length > 1 && (
+                {selected.images.length > 1 ? (
                   <div className="product-gallery__thumbs no-scrollbar">
                     {selected.images.map((image, index) => (
                       <button
@@ -465,7 +546,7 @@ export function CatalogOrdering({
                       </button>
                     ))}
                   </div>
-                )}
+                ) : null}
               </section>
 
               <section className="product-info">
@@ -487,22 +568,51 @@ export function CatalogOrdering({
               ) : (
                 <section className="product-selection">
                   <div className="product-selection__heading">
-                    <div><small>Chọn phân loại</small><h3>Màu, size/cup và số lượng</h3></div>
+                    <div>
+                      <small>Chọn phân loại</small>
+                      <h3>Màu, size/cup và số lượng</h3>
+                    </div>
                     <span>{rows.length} dòng</span>
                   </div>
                   <div className="product-selection__rows">
                     {rows.map((row, index) => (
                       <article key={row.id} className="selection-row">
-                        <header><strong>Lựa chọn {index + 1}</strong><button type="button" onClick={() => removeRow(row.id)}>Xóa</button></header>
-                        <select value={row.colorId} onChange={(event) => updateRow(row.id, { colorId: event.target.value })}>
+                        <header>
+                          <strong>Lựa chọn {index + 1}</strong>
+                          <button type="button" onClick={() => removeRow(row.id)}>Xóa</button>
+                        </header>
+                        <select
+                          value={row.colorId}
+                          onChange={(event) => updateRow(row.id, { colorId: event.target.value })}
+                        >
                           <option value="">Chọn màu</option>
-                          {selected.colors.map((color) => <option key={color.id} value={color.id}>{color.label}</option>)}
+                          {selected.colors.map((color) => (
+                            <option key={color.id} value={color.id}>{color.label}</option>
+                          ))}
                         </select>
-                        <select value={row.variantId} onChange={(event) => updateRow(row.id, { variantId: event.target.value })}>
+                        <select
+                          value={row.variantId}
+                          onChange={(event) => updateRow(row.id, { variantId: event.target.value })}
+                        >
                           <option value="">Chọn size/cup</option>
-                          {selected.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
+                          {selected.variants.map((variant) => (
+                            <option key={variant.id} value={variant.id}>{variant.label}</option>
+                          ))}
                         </select>
-                        <label><span>Số lượng</span><input type="number" min={1} max={999} value={row.quantity} onChange={(event) => updateRow(row.id, { quantity: Math.min(999, Math.max(1, Number(event.target.value) || 1)) })} /></label>
+                        <label>
+                          <span>Số lượng</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={999}
+                            value={row.quantity}
+                            onChange={(event) =>
+                              updateRow(row.id, {
+                                quantity: Math.min(999, Math.max(1, Number(event.target.value) || 1)),
+                              })
+                            }
+                          />
+                        </label>
                       </article>
                     ))}
                   </div>
@@ -518,25 +628,42 @@ export function CatalogOrdering({
                   </button>
                 </section>
               )}
-              {error && <p className="customer-alert customer-alert--error">{error}</p>}
+              {error ? <p className="customer-alert customer-alert--error">{error}</p> : null}
             </div>
 
             <footer className="customer-sheet__footer">
-              <div><small>Giá từ</small><strong>{formatVnd(selected.price)}</strong></div>
-              <button type="button" onClick={() => void addRowsToCart()} disabled={!selected.orderable || cartBusy}>
+              <div>
+                <small>Giá từ</small>
+                <strong>{formatVnd(selected.price)}</strong>
+              </div>
+              <button
+                type="button"
+                onClick={() => void addRowsToCart()}
+                disabled={!selected.orderable || cartBusy}
+              >
                 {cartBusy ? "Đang thêm…" : selected.orderable ? "Thêm vào giỏ" : "Chưa thể đặt"}
               </button>
             </footer>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {cartOpen && (
-        <div className="customer-sheet-layer" role="dialog" aria-modal="true" aria-label="Giỏ hàng và checkout">
+      {cartOpen ? (
+        <div
+          className="customer-sheet-layer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Giỏ hàng và checkout"
+        >
           <div className="customer-sheet cart-sheet">
             <header className="customer-sheet__header">
-              <button type="button" onClick={() => setCartOpen(false)} aria-label="Đóng giỏ hàng">←</button>
-              <div><small>Giỏ hàng</small><strong>{createdOrder ? "Đặt hàng thành công" : `${cart.quantity} sản phẩm`}</strong></div>
+              <button type="button" onClick={() => setCartOpen(false)} aria-label="Đóng giỏ hàng">
+                ←
+              </button>
+              <div>
+                <small>Giỏ hàng</small>
+                <strong>{createdOrder ? "Đặt hàng thành công" : `${cart.quantity} sản phẩm`}</strong>
+              </div>
               <span className="cart-sheet__step">{createdOrder ? "Xong" : "Thanh toán"}</span>
             </header>
 
@@ -544,38 +671,81 @@ export function CatalogOrdering({
               {createdOrder ? (
                 <section className="order-success">
                   <div className="order-success__icon">✓</div>
-                  <small>{createdOrder.idempotentReplay ? "Đơn đã được xác nhận trước đó" : "Đơn đã được tạo"}</small>
+                  <small>
+                    {createdOrder.idempotentReplay
+                      ? "Đơn đã được xác nhận trước đó"
+                      : "Đơn đã được tạo"}
+                  </small>
                   <h2>{createdOrder.orderCode}</h2>
                   <p>{createdOrder.itemCount} sản phẩm · {formatVnd(createdOrder.subtotal)}</p>
                   <div className="order-success__actions">
-                    <Link href={`/don-hang/${encodeURIComponent(createdOrder.orderCode)}`}>Xem chi tiết đơn</Link>
-                    <button type="button" onClick={() => { setCreatedOrder(null); setCartOpen(false); }}>Tiếp tục xem sản phẩm</button>
+                    <Link href={`/don-hang/${encodeURIComponent(createdOrder.orderCode)}`}>
+                      Xem chi tiết đơn
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreatedOrder(null);
+                        setCartOpen(false);
+                      }}
+                    >
+                      Tiếp tục xem sản phẩm
+                    </button>
                   </div>
                 </section>
               ) : cart.items.length === 0 ? (
                 <section className="cart-empty">
                   <span className="cart-empty__icon">
-                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5.5h14v15H5zM8 5.5a4 4 0 0 1 8 0" /></svg>
+                    <svg aria-hidden="true" viewBox="0 0 24 24">
+                      <path d="M5 5.5h14v15H5zM8 5.5a4 4 0 0 1 8 0" />
+                    </svg>
                   </span>
                   <h2>Giỏ hàng đang trống</h2>
                   <p>Chọn sản phẩm, màu và size/cup để bắt đầu đơn sỉ.</p>
-                  <button type="button" onClick={() => setCartOpen(false)}>Quay lại sản phẩm</button>
+                  <button type="button" onClick={() => setCartOpen(false)}>
+                    Quay lại sản phẩm
+                  </button>
                 </section>
               ) : (
                 <>
                   <section className="cart-lines">
-                    <div className="cart-section-heading"><span>Sản phẩm đã chọn</span><strong>{cart.quantity} món</strong></div>
+                    <div className="cart-section-heading">
+                      <span>Sản phẩm đã chọn</span>
+                      <strong>{cart.quantity} món</strong>
+                    </div>
                     {cart.items.map((line) => (
                       <article key={line.id} className="cart-line">
                         <div className="cart-line__top">
-                          <div><small>{line.productCode}</small><strong>{line.productName}</strong><span>Màu {line.colorLabel} · {line.variantLabel}</span></div>
-                          <button type="button" disabled={busyItemId === line.id} onClick={() => void changeCartQuantity(line.id, 0)}>Xóa</button>
+                          <div>
+                            <small>{line.productCode}</small>
+                            <strong>{line.productName}</strong>
+                            <span>Màu {line.colorLabel} · {line.variantLabel}</span>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={busyItemId === line.id}
+                            onClick={() => void changeCartQuantity(line.id, 0)}
+                          >
+                            Xóa
+                          </button>
                         </div>
                         <div className="cart-line__bottom">
                           <div className="quantity-control">
-                            <button type="button" disabled={busyItemId === line.id} onClick={() => void changeCartQuantity(line.id, line.quantity - 1)}>−</button>
+                            <button
+                              type="button"
+                              disabled={busyItemId === line.id}
+                              onClick={() => void changeCartQuantity(line.id, line.quantity - 1)}
+                            >
+                              −
+                            </button>
                             <strong>{line.quantity}</strong>
-                            <button type="button" disabled={busyItemId === line.id || line.quantity >= 999} onClick={() => void changeCartQuantity(line.id, line.quantity + 1)}>+</button>
+                            <button
+                              type="button"
+                              disabled={busyItemId === line.id || line.quantity >= 999}
+                              onClick={() => void changeCartQuantity(line.id, line.quantity + 1)}
+                            >
+                              +
+                            </button>
                           </div>
                           <strong>{formatVnd(line.lineTotal)}</strong>
                         </div>
@@ -583,40 +753,80 @@ export function CatalogOrdering({
                     ))}
                   </section>
 
-                  <form id="customer-checkout-form" onSubmit={submitOrder} className="checkout-form">
-                    <div className="cart-section-heading"><span>Thông tin đặt hàng</span><strong>Bước cuối</strong></div>
+                  <form
+                    id="customer-checkout-form"
+                    onSubmit={submitOrder}
+                    className="checkout-form"
+                  >
+                    <div className="cart-section-heading">
+                      <span>Thông tin đặt hàng</span>
+                      <strong>Bước cuối</strong>
+                    </div>
                     <Link href="/tai-khoan" className="checkout-profile-link">
-                      <div><small>Thông tin giao hàng</small><strong>Dùng hồ sơ đã lưu trên server</strong></div><span>Kiểm tra →</span>
+                      <div>
+                        <small>Thông tin giao hàng</small>
+                        <strong>Dùng hồ sơ đã lưu trên server</strong>
+                      </div>
+                      <span>Kiểm tra →</span>
                     </Link>
                     <section className="checkout-location">
-                      <div><small>Vị trí hiện tại</small><strong>Tùy chọn</strong><p>Chỉ được lưu khi bạn chủ động cấp quyền.</p></div>
+                      <div>
+                        <small>Vị trí hiện tại</small>
+                        <strong>Tùy chọn</strong>
+                        <p>Chỉ được lưu khi bạn chủ động cấp quyền.</p>
+                      </div>
                       {checkoutLocation ? (
-                        <button type="button" onClick={clearCheckoutLocation} className="is-remove">Xóa vị trí</button>
+                        <button type="button" onClick={clearCheckoutLocation} className="is-remove">
+                          Xóa vị trí
+                        </button>
                       ) : (
-                        <button type="button" onClick={requestCheckoutLocation} disabled={locationState === "loading" || cartBusy}>
+                        <button
+                          type="button"
+                          onClick={requestCheckoutLocation}
+                          disabled={locationState === "loading" || cartBusy}
+                        >
                           {locationState === "loading" ? "Đang lấy…" : "Lấy vị trí"}
                         </button>
                       )}
-                      {locationMessage && <p className={locationState === "error" ? "is-error" : "is-ready"}>{locationMessage}</p>}
+                      {locationMessage ? (
+                        <p className={locationState === "error" ? "is-error" : "is-ready"}>
+                          {locationMessage}
+                        </p>
+                      ) : null}
                     </section>
-                    <label className="checkout-note"><span>Ghi chú đơn hàng</span><textarea maxLength={1000} value={checkout.note} onChange={(event) => setCheckout((current) => ({ ...current, note: event.target.value }))} placeholder="Ví dụ: giao giờ hành chính…" /></label>
-                    {checkoutError && <p className="customer-alert customer-alert--error">{checkoutError}</p>}
+                    <label className="checkout-note">
+                      <span>Ghi chú đơn hàng</span>
+                      <textarea
+                        maxLength={1000}
+                        value={checkout.note}
+                        onChange={(event) =>
+                          setCheckout((current) => ({ ...current, note: event.target.value }))
+                        }
+                        placeholder="Ví dụ: giao giờ hành chính…"
+                      />
+                    </label>
+                    {checkoutError ? (
+                      <p className="customer-alert customer-alert--error">{checkoutError}</p>
+                    ) : null}
                   </form>
                 </>
               )}
             </div>
 
-            {!createdOrder && cart.items.length > 0 && (
+            {!createdOrder && cart.items.length > 0 ? (
               <footer className="customer-sheet__footer cart-sheet__footer">
-                <div><small>Tạm tính</small><strong>{formatVnd(cart.subtotal)}</strong></div>
+                <div>
+                  <small>Tạm tính</small>
+                  <strong>{formatVnd(cart.subtotal)}</strong>
+                </div>
                 <button type="submit" form="customer-checkout-form" disabled={cartBusy}>
                   {cartBusy ? "Đang tạo đơn…" : "Xác nhận đặt hàng"}
                 </button>
               </footer>
-            )}
+            ) : null}
           </div>
         </div>
-      )}
+      ) : null}
     </main>
   );
 }
