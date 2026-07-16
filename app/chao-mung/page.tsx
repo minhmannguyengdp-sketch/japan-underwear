@@ -2,33 +2,38 @@ import Link from "next/link";
 
 import { InstallAppButton } from "@/components/app-shell/install-app-button";
 
+import styles from "./welcome-balance.module.css";
+
 export default function WelcomePage() {
   return (
-    <main className="fashion-welcome">
+    <main className={`fashion-welcome ${styles.page}`}>
       <div className="fashion-welcome__backdrop" aria-hidden="true" />
 
-      <section className="fashion-welcome__brand">
+      <section className={`fashion-welcome__brand ${styles.brand}`}>
         <img
           src="/brand/pensee-logo-current.png"
           alt="Pensee"
-          className="fashion-welcome__logo"
+          className={`fashion-welcome__logo ${styles.logo}`}
         />
-        <p className="fashion-welcome__slogan">
+        <p className={`fashion-welcome__slogan ${styles.slogan}`}>
           Nội y tôn vinh vẻ đẹp và sự tự tin của bạn.
         </p>
       </section>
 
-      <section className="fashion-welcome__visual" aria-label="Bộ sưu tập Pensee">
+      <section
+        className={`fashion-welcome__visual ${styles.visual}`}
+        aria-label="Bộ sưu tập Pensee"
+      >
         <img
           src="/brand/pensee-welcome-current.png"
           alt="Bộ sưu tập nội y Pensee"
-          className="fashion-welcome__hero-image"
+          className={`fashion-welcome__hero-image ${styles.heroImage}`}
         />
         <div className="fashion-welcome__mist" aria-hidden="true" />
       </section>
 
-      <section className="fashion-welcome__panel">
-        <div className="fashion-welcome__actions">
+      <section className={`fashion-welcome__panel ${styles.panel}`}>
+        <div className={`fashion-welcome__actions ${styles.actions}`}>
           <Link
             href="/dang-nhap?callbackUrl=/tai-khoan"
             className="fashion-welcome__primary"
