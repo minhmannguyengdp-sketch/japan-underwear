@@ -1,0 +1,357 @@
+.fashion-welcome {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+  flex-direction: column;
+  padding: calc(14px + var(--safe-top)) 16px calc(14px + var(--safe-bottom));
+  background: #fffaf4;
+  color: #2e1635;
+}
+
+.fashion-welcome__backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 86% 8%, rgba(185, 127, 207, 0.18), transparent 15rem),
+    linear-gradient(180deg, rgba(255, 252, 247, 0.04), rgba(249, 237, 250, 0.58)),
+    url("/brand/pensee-app-background.png") center top / cover no-repeat;
+}
+
+.fashion-welcome__brand,
+.fashion-welcome__visual,
+.fashion-welcome__panel {
+  position: relative;
+  z-index: 1;
+}
+
+.fashion-welcome__brand {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  flex-direction: column;
+  text-align: center;
+}
+
+.fashion-welcome__logo {
+  width: clamp(138px, 44vw, 188px);
+  height: clamp(74px, 12vh, 108px);
+  object-fit: contain;
+  filter: drop-shadow(0 10px 20px rgba(73, 28, 87, 0.09));
+}
+
+.fashion-welcome__eyebrow {
+  margin: 2px 0 0;
+  color: #77388c;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+}
+
+.fashion-welcome__brand h1 {
+  margin: 6px 0 0;
+  color: #352f38;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(25px, 7.5vw, 33px);
+  font-weight: 400;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+
+.fashion-welcome__brand h1 strong {
+  color: #7b3a92;
+  font-weight: 500;
+}
+
+.fashion-welcome__brand > p:last-child {
+  max-width: 320px;
+  margin: 8px 0 0;
+  color: #716375;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.fashion-welcome__visual {
+  position: relative;
+  min-height: 220px;
+  flex: 1 1 300px;
+  margin: 12px -5px 0;
+  overflow: hidden;
+  border-radius: 34px;
+  isolation: isolate;
+}
+
+.fashion-welcome__visual::before {
+  position: absolute;
+  z-index: 2;
+  inset: -16px;
+  border-radius: 44px;
+  content: "";
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 28px 22px rgba(255, 250, 244, 0.88),
+    inset 0 0 54px 28px rgba(246, 229, 248, 0.42);
+}
+
+.fashion-welcome__hero-image {
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  object-fit: cover;
+  object-position: center;
+  transform: scale(1.025);
+  filter: saturate(0.96) contrast(0.99) brightness(1.02);
+  -webkit-mask-image: radial-gradient(ellipse 96% 94% at center, #000 72%, rgba(0, 0, 0, 0.82) 84%, transparent 100%);
+  mask-image: radial-gradient(ellipse 96% 94% at center, #000 72%, rgba(0, 0, 0, 0.82) 84%, transparent 100%);
+}
+
+.fashion-welcome__mist {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 244, 0.62) 0%, transparent 15%, transparent 78%, rgba(249, 236, 250, 0.88) 100%),
+    radial-gradient(ellipse at center, transparent 50%, rgba(255, 250, 244, 0.38) 78%, rgba(255, 250, 244, 0.92) 100%);
+  pointer-events: none;
+}
+
+.fashion-welcome__panel {
+  flex: 0 0 auto;
+  margin: -28px 5px 0;
+  padding: 17px;
+  border: 1px solid rgba(109, 47, 130, 0.11);
+  border-radius: 28px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.97), rgba(255, 249, 246, 0.91));
+  box-shadow:
+    0 26px 58px rgba(54, 16, 65, 0.22),
+    0 8px 20px rgba(72, 25, 86, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+}
+
+.fashion-welcome__panel-copy > span {
+  display: block;
+  color: #7b338f;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.fashion-welcome__panel-copy h2 {
+  margin: 5px 0 0;
+  color: #35143e;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 23px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.02;
+}
+
+.fashion-welcome__panel-copy p {
+  margin: 7px 0 0;
+  color: #746878;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.fashion-welcome__actions {
+  display: grid;
+  margin-top: 13px;
+  gap: 9px;
+}
+
+.fashion-welcome__primary,
+.fashion-welcome__secondary {
+  display: grid;
+  align-items: center;
+  text-decoration: none;
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.fashion-welcome__primary {
+  min-height: 58px;
+  grid-template-columns: 1fr auto;
+  padding: 8px 16px 8px 17px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 43%),
+    linear-gradient(135deg, #934eaa 0%, #742b8a 48%, #591966 100%);
+  color: #fff;
+  box-shadow:
+    0 16px 30px rgba(82, 24, 98, 0.29),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(45, 7, 55, 0.22);
+}
+
+.fashion-welcome__primary small,
+.fashion-welcome__primary strong {
+  display: block;
+}
+
+.fashion-welcome__primary small {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 7px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.fashion-welcome__primary strong {
+  margin-top: 5px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.fashion-welcome__secondary {
+  min-height: 49px;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  padding: 0 15px;
+  border: 1px solid rgba(113, 49, 134, 0.34);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fff, #fff9f6);
+  color: #713686;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+  box-shadow:
+    0 8px 16px rgba(72, 24, 86, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.fashion-welcome__primary svg,
+.fashion-welcome__secondary svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.fashion-welcome__primary:active,
+.fashion-welcome__secondary:active {
+  transform: translateY(1px);
+}
+
+.fashion-welcome__trust {
+  display: grid;
+  align-items: center;
+  margin-top: 11px;
+  grid-template-columns: 1fr auto 1.25fr auto 1fr;
+  gap: 6px;
+  color: #8e8191;
+}
+
+.fashion-welcome__trust span {
+  font-size: 7px;
+  font-weight: 750;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.fashion-welcome__trust i {
+  width: 1px;
+  height: 14px;
+  background: rgba(93, 54, 103, 0.14);
+}
+
+@media (max-width: 340px) {
+  .fashion-welcome {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .fashion-welcome__logo {
+    width: 124px;
+    height: 70px;
+  }
+
+  .fashion-welcome__brand h1 {
+    font-size: 24px;
+  }
+
+  .fashion-welcome__brand > p:last-child {
+    max-width: 260px;
+    font-size: 10px;
+  }
+
+  .fashion-welcome__visual {
+    min-height: 205px;
+    margin-top: 10px;
+    border-radius: 28px;
+  }
+
+  .fashion-welcome__panel {
+    margin-right: 2px;
+    margin-left: 2px;
+    padding: 14px;
+  }
+}
+
+@media (max-height: 690px) {
+  .fashion-welcome {
+    padding-top: calc(8px + var(--safe-top));
+    padding-bottom: calc(8px + var(--safe-bottom));
+  }
+
+  .fashion-welcome__logo {
+    width: 118px;
+    height: 64px;
+  }
+
+  .fashion-welcome__eyebrow {
+    display: none;
+  }
+
+  .fashion-welcome__brand h1 {
+    margin-top: 2px;
+    font-size: 23px;
+  }
+
+  .fashion-welcome__brand > p:last-child {
+    margin-top: 5px;
+    font-size: 9px;
+  }
+
+  .fashion-welcome__visual {
+    min-height: 190px;
+    margin-top: 7px;
+  }
+
+  .fashion-welcome__panel {
+    margin-top: -34px;
+    padding: 13px;
+  }
+
+  .fashion-welcome__panel-copy p,
+  .fashion-welcome__trust {
+    display: none;
+  }
+
+  .fashion-welcome__panel-copy h2 {
+    font-size: 20px;
+  }
+
+  .fashion-welcome__actions {
+    margin-top: 10px;
+  }
+
+  .fashion-welcome__primary {
+    min-height: 53px;
+  }
+
+  .fashion-welcome__secondary {
+    min-height: 45px;
+  }
+}

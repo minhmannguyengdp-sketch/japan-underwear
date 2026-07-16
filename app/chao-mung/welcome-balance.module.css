@@ -1,0 +1,100 @@
+.page {
+  display: grid;
+  min-height: 100svh;
+  grid-template-rows: auto minmax(360px, 1fr) auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: calc(8px + var(--safe-top)) 12px calc(12px + var(--safe-bottom));
+}
+
+.brand {
+  margin: 0 auto 4px;
+}
+
+.logo {
+  width: clamp(104px, 28vw, 128px);
+  height: clamp(48px, 7.5vh, 62px);
+  transform: scale(1.08);
+  transform-origin: center;
+}
+
+:global(.fashion-welcome__brand).brand > .slogan:last-child {
+  max-width: 290px;
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.visual {
+  min-height: 0;
+  align-self: stretch;
+  margin: 14px -2px 0;
+  border-radius: 30px;
+}
+
+.heroImage {
+  object-position: 50% 48%;
+  transform: none;
+}
+
+.panel {
+  z-index: 4;
+  margin: -44px 7px 0;
+  padding: 12px;
+  border-radius: 24px;
+  box-shadow:
+    0 20px 44px rgba(54, 16, 65, 0.16),
+    0 6px 16px rgba(72, 25, 86, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+}
+
+.actions {
+  margin-top: 0;
+  gap: 8px;
+}
+
+@media (max-width: 340px) {
+  .page {
+    grid-template-rows: auto minmax(320px, 1fr) auto;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .visual {
+    margin-top: 10px;
+    border-radius: 26px;
+  }
+
+  .panel {
+    margin-right: 4px;
+    margin-left: 4px;
+    padding: 11px;
+    border-radius: 22px;
+  }
+}
+
+@media (max-height: 700px) {
+  .page {
+    grid-template-rows: auto minmax(310px, 1fr) auto;
+    padding-top: calc(5px + var(--safe-top));
+    padding-bottom: calc(8px + var(--safe-bottom));
+  }
+
+  .logo {
+    width: 96px;
+    height: 44px;
+  }
+
+  :global(.fashion-welcome__brand).brand > .slogan:last-child {
+    font-size: 9px;
+  }
+
+  .visual {
+    margin-top: 8px;
+  }
+
+  .panel {
+    margin-top: -38px;
+    padding: 10px;
+  }
+}

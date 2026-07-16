@@ -1,68 +1,174 @@
-import { CatalogOrdering } from "@/components/catalog-ordering-v2";
-import { CustomerAccountShortcut } from "@/components/customer-account-shortcut";
+import Link from "next/link";
+
 import { listCatalogProducts } from "@/lib/catalog";
 import type { CatalogProduct } from "@/lib/catalog-types";
 
 export const dynamic = "force-dynamic";
 
-type CatalogPageResult =
-  | { products: CatalogProduct[]; failed: false }
-  | { products: []; failed: true };
+type HomeData = {
+  products: CatalogProduct[];
+  failed: boolean;
+};
 
-async function loadCatalogPage(): Promise<CatalogPageResult> {
+type HomeCategory = {
+  slug: "ao-nguc" | "quan-lot" | "quan-gen";
+  label: string;
+  title: string;
+  bannerSrc: string;
+  tone: "lilac" | "rose" | "plum";
+};
+
+const HOME_CATEGORIES: HomeCategory[] = [
+  {
+    slug: "ao-nguc",
+    label: "Áo ngực",
+    title: "Phom nâng đỡ",
+    bannerSrc: "/brand/pensee-home-banner-ao-nguc.png",
+    tone: "lilac",
+  },
+  {
+    slug: "quan-lot",
+    label: "Quần lót",
+    title: "Mềm nhẹ mỗi ngày",
+    bannerSrc: "/brand/pensee-home-banner-quan-lot.png",
+    tone: "rose",
+  },
+  {
+    slug: "quan-gen",
+    label: "Quần gen",
+    title: "Định hình tinh tế",
+    bannerSrc: "/brand/pensee-home-banner-quan-gen.png",
+    tone: "plum",
+  },
+];
+
+async function loadHomeData(): Promise<HomeData> {
   try {
-    const products = await listCatalogProducts({ limit: 200 });
-    return { products, failed: false };
+    return { products: await listCatalogProducts({ limit: 200 }), failed: false };
   } catch (error) {
-    console.error(
-      "Catalog page failed:",
-      error instanceof Error ? error.message : String(error),
-    );
+    console.error("Home catalog failed:", error instanceof Error ? error.message : String(error));
     return { products: [], failed: true };
   }
 }
 
-function StateCard({ failed }: { failed: boolean }) {
+function formatVnd(value: number) {
+  if (value <= 0) return "Đang cập nhật";
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function coverFor(product: CatalogProduct) {
+  return product.images.find((image) => image.isCover) ?? product.images[0] ?? null;
+}
+
+function ProductTile({ product }: { product: CatalogProduct }) {
+  const cover = coverFor(product);
+
   return (
-    <main className="grid min-h-screen place-items-center bg-[#f7f5fa] px-5 py-12 text-ink-950">
-      <section className="w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-purple-900/10">
-        <div className="border-b border-slate-100 p-6 sm:p-8">
-          <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-xl bg-tt-purple-700 text-sm font-black text-white">TT</div>
-            <div>
-              <p className="font-black">Tuấn Thủy</p>
-              <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Catalog PostgreSQL + R2</p>
-            </div>
-          </div>
-          <p className={`mt-8 text-xs font-black uppercase tracking-[0.16em] ${failed ? "text-winking-red" : "text-tt-purple-700"}`}>
-            {failed ? "Lỗi kết nối dữ liệu" : "Catalog chưa được nạp"}
-          </p>
-          <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
-            {failed ? "Không đọc được PostgreSQL." : "Database vẫn đang có 0 model."}
-          </h1>
-          <p className="mt-4 max-w-xl leading-7 text-slate-600">
-            {failed
-              ? "Dev server chưa thể kết nối hoặc schema order variant chưa được migrate. Xem lỗi cụ thể trong terminal."
-              : "Bản mới tự migrate schema catalog trước khi mở dev server. Trạng thái này thường nghĩa là process cũ vẫn đang chạy."}
-          </p>
-        </div>
-        <div className="bg-[#fbfaff] p-6 sm:p-8">
-          <p className="text-sm font-black">Dừng process cũ, cập nhật code rồi chạy:</p>
-          <pre className="mt-3 overflow-x-auto rounded-2xl bg-ink-950 p-4 text-sm leading-7 text-white"><code>{`git pull --ff-only origin main\nnpm run dev`}</code></pre>
-        </div>
-      </section>
-    </main>
+    <Link
+      href={`/cua-hang?san-pham=${encodeURIComponent(product.id)}`}
+      className="home-category-card"
+    >
+      <div className="home-category-card__image">
+        {cover?.src ? <img src={cover.src} alt={cover.alt} /> : <span>Chưa có ảnh</span>}
+        <em className={product.orderable ? "is-ready" : "is-waiting"}>
+          {product.orderable ? "Có thể đặt" : "Đang bổ sung"}
+        </em>
+      </div>
+      <div className="home-category-card__body">
+        <small>{product.brand} · {product.code}</small>
+        <strong>{product.name}</strong>
+        <b>{formatVnd(product.price)}</b>
+      </div>
+    </Link>
   );
 }
 
 export default async function HomePage() {
-  const result = await loadCatalogPage();
-  if (result.failed) return <StateCard failed />;
-  if (result.products.length === 0) return <StateCard failed={false} />;
+  const { products, failed } = await loadHomeData();
+
   return (
-    <>
-      <CustomerAccountShortcut />
-      <CatalogOrdering products={result.products} />
-    </>
+    <main className="customer-home">
+      <section className="home-intro">
+        <h1>Bộ sưu tập</h1>
+      </section>
+
+      <Link href="/cua-hang" className="home-hero" aria-label="Mở bộ sưu tập Pensee">
+        <img src="/brand/pensee-welcome-current.png" alt="Bộ sưu tập Pensee" />
+      </Link>
+
+      {failed ? (
+        <section className="customer-empty-card home-catalog-error">
+          <strong>Không tải được sản phẩm</strong>
+        </section>
+      ) : (
+        HOME_CATEGORIES.map((category) => {
+          const categoryProducts = products
+            .filter(
+              (product) =>
+                product.categorySlug === category.slug && Boolean(coverFor(product)?.src),
+            )
+            .slice(0, 3);
+
+          return (
+            <section
+              key={category.slug}
+              className={`home-category-section home-category-section--${category.tone}`}
+            >
+              <header className="home-category-section__heading">
+                <div>
+                  <span>{category.label}</span>
+                  <h2>{category.title}</h2>
+                </div>
+              </header>
+
+              <Link
+                href={`/cua-hang?nhom=${encodeURIComponent(category.slug)}`}
+                className="home-category-banner"
+                aria-label={`Xem ${category.label}`}
+              >
+                <img src={category.bannerSrc} alt={`Banner ${category.label}`} />
+              </Link>
+
+              {categoryProducts.length > 0 ? (
+                <div className="home-category-grid">
+                  {categoryProducts.map((product) => (
+                    <ProductTile key={product.id} product={product} />
+                  ))}
+                </div>
+              ) : (
+                <div className="home-category-empty">
+                  <strong>Chưa có sản phẩm</strong>
+                </div>
+              )}
+
+              <Link
+                href={`/cua-hang?nhom=${encodeURIComponent(category.slug)}`}
+                className="home-category-section__link"
+              >
+                Xem tất cả
+                <span aria-hidden="true">→</span>
+              </Link>
+            </section>
+          );
+        })
+      )}
+
+      <section className="home-event-card">
+        <div className="home-event-card__ornament" aria-hidden="true" />
+        <div>
+          <span>Sự kiện</span>
+          <h2>Ưu đãi mới</h2>
+        </div>
+        <Link href="/su-kien" aria-label="Mở trang sự kiện">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M5 12h14M14 7l5 5-5 5" />
+          </svg>
+        </Link>
+      </section>
+    </main>
   );
 }

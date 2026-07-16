@@ -5,15 +5,23 @@ import * as schema from "./schema";
 
 let pool: Pool | undefined;
 
-function readPoolMax() {
-  const rawValue = process.env.DB_POOL_MAX ?? "5";
+function readIntegerEnv(name: string, fallback: number, min: number, max: number) {
+  const rawValue = process.env[name] ?? String(fallback);
   const value = Number(rawValue);
 
-  if (!Number.isInteger(value) || value < 1 || value > 20) {
-    throw new Error(`DB_POOL_MAX không hợp lệ: ${rawValue}`);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${name} không hợp lệ: ${rawValue}`);
   }
 
   return value;
+}
+
+function readPoolMax() {
+  return readIntegerEnv("DB_POOL_MAX", 5, 1, 20);
+}
+
+function readConnectionTimeoutMillis() {
+  return readIntegerEnv("DB_CONNECTION_TIMEOUT_MS", 30_000, 5_000, 120_000);
 }
 
 function isLocalDatabase(connectionString: string) {
@@ -37,8 +45,10 @@ export function getPool() {
   pool = new Pool({
     connectionString,
     max: readPoolMax(),
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 60_000,
+    connectionTimeoutMillis: readConnectionTimeoutMillis(),
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
     ssl: isLocalDatabase(connectionString)
       ? undefined
       : { rejectUnauthorized: false },
