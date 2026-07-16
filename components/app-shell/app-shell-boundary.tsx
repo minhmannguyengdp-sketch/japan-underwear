@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 import { HeaderCartButton } from "@/components/app-shell/header-cart-button";
@@ -86,6 +87,26 @@ const routeTitles: Array<{
 
 export function AppShellBoundary({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [authenticated, setAuthenticated] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function readSession() {
+      try {
+        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        const session = (await response.json().catch(() => null)) as { user?: unknown } | null;
+        if (!cancelled) setAuthenticated(Boolean(response.ok && session?.user));
+      } catch {
+        if (!cancelled) setAuthenticated(false);
+      }
+    }
+
+    void readSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
 
   if (pathname.startsWith("/admin")) return children;
 
@@ -106,7 +127,7 @@ export function AppShellBoundary({ children }: { children: ReactNode }) {
         <header className="public-app-header">
           <Link href="/" className="public-brand" aria-label="Về trang chủ Tuấn Thủy">
             <span className="public-brand-logo">
-              <img src="/brand/pensee-logo-current.png" alt="" />
+              <img src="/brand/pensee-logo-transparent.svg" alt="" />
             </span>
             <span className="public-brand-copy">
               <strong>{routeTitle.title}</strong>
@@ -114,11 +135,16 @@ export function AppShellBoundary({ children }: { children: ReactNode }) {
           </Link>
           <div className="public-header-actions">
             <HeaderCartButton />
-            <Link href="/tai-khoan" className="public-account-button" aria-label="Mở tài khoản">
+            <Link
+              href="/tai-khoan"
+              className={`public-account-button${authenticated ? " is-authenticated" : ""}`}
+              aria-label={authenticated ? "Tài khoản đã đăng nhập" : "Đăng nhập tài khoản"}
+            >
               <svg aria-hidden="true" viewBox="0 0 24 24">
                 <circle cx="12" cy="8" r="4" />
                 <path d="M5 21a7 7 0 0 1 14 0" />
               </svg>
+              <i aria-hidden="true" />
             </Link>
           </div>
         </header>
@@ -128,11 +154,16 @@ export function AppShellBoundary({ children }: { children: ReactNode }) {
         <nav className="public-bottom-nav" aria-label="Điều hướng chính">
           {navItems.map((item) => {
             const active = item.match(pathname);
+            const authenticatedAccount = authenticated && item.href === "/tai-khoan";
+            const className = [active ? "is-active" : "", authenticatedAccount ? "is-authenticated" : ""]
+              .filter(Boolean)
+              .join(" ");
+
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={active ? "is-active" : undefined}
+                className={className || undefined}
                 aria-current={active ? "page" : undefined}
               >
                 {item.icon}
