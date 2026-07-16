@@ -11,20 +11,22 @@ function isStandalone() {
   if (typeof window === "undefined") return false;
   return (
     window.matchMedia("(display-mode: standalone)").matches ||
-    ("standalone" in window.navigator && Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone))
+    ("standalone" in window.navigator &&
+      Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone))
   );
+}
+
+function isIosDevice() {
+  return typeof window !== "undefined" && /iPad|iPhone|iPod/.test(window.navigator.userAgent);
 }
 
 export function InstallAppButton() {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
-  const [installed, setInstalled] = useState(false);
+  const [installed, setInstalled] = useState(isStandalone);
   const [showGuide, setShowGuide] = useState(false);
-  const [isIos, setIsIos] = useState(false);
+  const [isIos] = useState(isIosDevice);
 
   useEffect(() => {
-    setInstalled(isStandalone());
-    setIsIos(/iPad|iPhone|iPod/.test(window.navigator.userAgent));
-
     function handleBeforeInstallPrompt(event: Event) {
       event.preventDefault();
       setInstallPrompt(event as InstallPromptEvent);
