@@ -10,6 +10,14 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const shopLocationSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  accuracyMeters: z.number().positive().max(100000),
+  collectedAt: z.string().datetime(),
+  source: z.literal("browser_geolocation"),
+});
+
 const profileSchema = z.object({
   storeName: z.string().trim().min(2).max(160),
   contactName: z.string().trim().min(2).max(120),
@@ -20,6 +28,7 @@ const profileSchema = z.object({
     .max(24)
     .regex(/^[0-9+().\s-]+$/),
   deliveryAddress: z.string().trim().min(5).max(500),
+  shopLocation: shopLocationSchema.nullable().optional(),
 });
 
 function errorResponse(error: unknown) {
@@ -57,7 +66,7 @@ export async function PUT(request: Request) {
     if (!parsed.success) {
       return NextResponse.json(
         {
-          error: "Tên cửa hàng, người liên hệ, điện thoại hoặc địa chỉ chưa hợp lệ.",
+          error: "Tên cửa hàng, người liên hệ, điện thoại, địa chỉ hoặc vị trí chưa hợp lệ.",
           code: "invalid_customer_profile",
         },
         { status: 400 },
