@@ -8,6 +8,8 @@ import { getCustomerProfile } from "@/lib/customer-profile";
 
 export const dynamic = "force-dynamic";
 
+const WELCOME_URL = "https://japan-underwear.vercel.app/chao-mung";
+
 export default async function CustomerProfilePage() {
   let authorization;
   try {
@@ -74,10 +76,30 @@ export default async function CustomerProfilePage() {
           <em>{profile ? "Đã lưu" : "Cần bổ sung"}</em>
         </div>
         <p className="account-profile-card__intro">
-          Hệ thống dùng thông tin này làm snapshot cho từng đơn hàng. Hãy giữ số điện thoại
-          và địa chỉ luôn chính xác.
+          Hệ thống dùng thông tin này làm snapshot cho từng đơn hàng. Hãy giữ số điện thoại,
+          địa chỉ và vị trí shop luôn chính xác.
         </p>
         <CustomerProfileForm initialProfile={profile} defaultContactName={authorization.name ?? ""} />
+      </section>
+
+      <section className="account-qr-card">
+        <div className="account-qr-card__copy">
+          <span>Mã QR ứng dụng</span>
+          <h2>Mở thẳng trang chào mừng</h2>
+          <p>Quét mã bằng camera điện thoại để mở đúng bản live của ứng dụng.</p>
+          <a href={WELCOME_URL} target="_blank" rel="noreferrer">
+            {WELCOME_URL}
+          </a>
+        </div>
+        <div className="account-qr-card__image">
+          <img
+            src="/brand/japan-underwear-welcome-qr.svg"
+            alt="Mã QR mở trang chào mừng Japan Underwear"
+          />
+          <a href="/brand/japan-underwear-welcome-qr.svg" download>
+            Tải mã QR
+          </a>
+        </div>
       </section>
 
       <form
