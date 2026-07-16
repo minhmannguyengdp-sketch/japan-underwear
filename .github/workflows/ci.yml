@@ -27,18 +27,7 @@ jobs:
           fetch-depth: 0
 
       - name: Apply exact reviewed changes
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f .github/ui-regression-fix.trigger
-          test -f .github/workflows/apply-ui-regression-fix.yml
-          awk '
-            /^          python - <<.PY./ { capture=1; next }
-            /^          PY$/ { capture=0 }
-            capture { sub(/^          /, ""); print }
-          ' .github/workflows/apply-ui-regression-fix.yml > /tmp/apply-ui-regression-fix.py
-          test -s /tmp/apply-ui-regression-fix.py
-          python /tmp/apply-ui-regression-fix.py
+        run: python scripts/apply-ui-regression-fix.py
 
       - name: Commit UI fix
         shell: bash
