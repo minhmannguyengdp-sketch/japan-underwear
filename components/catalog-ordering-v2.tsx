@@ -161,7 +161,6 @@ export function CatalogOrdering({
 
   useEffect(() => {
     if (!selectedId) return;
-    setImageIndex(0);
     window.requestAnimationFrame(() => {
       galleryRef.current?.scrollTo({ left: 0, behavior: "auto" });
     });
@@ -201,6 +200,7 @@ export function CatalogOrdering({
   }, [brand, category, products, search]);
 
   function openProduct(product: CatalogProduct) {
+    setImageIndex(0);
     setSelectedId(product.id);
     setRows([makeRow(1)]);
     setNextRow(2);
