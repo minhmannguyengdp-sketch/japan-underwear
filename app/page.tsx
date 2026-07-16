@@ -14,9 +14,7 @@ type HomeCategory = {
   slug: "ao-nguc" | "quan-lot" | "quan-gen";
   label: string;
   title: string;
-  description: string;
-  campaignTitle: string;
-  campaignCopy: string;
+  bannerSrc: string;
   tone: "lilac" | "rose" | "plum";
 };
 
@@ -24,28 +22,22 @@ const HOME_CATEGORIES: HomeCategory[] = [
   {
     slug: "ao-nguc",
     label: "Áo ngực",
-    title: "Phom nâng đỡ cho từng dáng mặc",
-    description: "Các mẫu Pensee và Winking có hình ảnh, màu và size/cup rõ ràng.",
-    campaignTitle: "Nâng đỡ mềm mại, phom đẹp tự nhiên",
-    campaignCopy: "Khám phá dòng áo ngực dành cho nhu cầu mặc hằng ngày và lên đơn sỉ.",
+    title: "Phom nâng đỡ",
+    bannerSrc: "/brand/pensee-home-banner-ao-nguc.png",
     tone: "lilac",
   },
   {
     slug: "quan-lot",
     label: "Quần lót",
-    title: "Nhẹ, gọn và dễ phối theo bộ",
-    description: "Tách riêng nhóm quần để tìm mẫu nhanh hơn khi lên đơn sỉ.",
-    campaignTitle: "Nhẹ nhàng trong từng chuyển động",
-    campaignCopy: "Bộ sưu tập quần lót được sắp theo nhóm để chọn nhanh và phối đồng bộ.",
+    title: "Mềm nhẹ mỗi ngày",
+    bannerSrc: "/brand/pensee-home-banner-quan-lot.png",
     tone: "rose",
   },
   {
     slug: "quan-gen",
     label: "Quần gen",
-    title: "Định hình gọn cho nhu cầu chuyên biệt",
-    description: "Nhóm sản phẩm gen được trình bày riêng, không trộn với quần lót thường.",
-    campaignTitle: "Định hình tinh tế, tự tin cả ngày",
-    campaignCopy: "Xem riêng các mẫu gen và sản phẩm định hình khi dữ liệu nguồn được bổ sung.",
+    title: "Định hình tinh tế",
+    bannerSrc: "/brand/pensee-home-banner-quan-gen.png",
     tone: "plum",
   },
 ];
@@ -101,25 +93,16 @@ export default async function HomePage() {
   return (
     <main className="customer-home">
       <section className="home-intro">
-        <p className="customer-kicker">Pensee · Winking</p>
-        <h1>Nội y đẹp, tìm đúng nhóm ngay từ đầu.</h1>
-        <p>Catalog được chia rõ theo áo ngực, quần lót và quần gen để thao tác nhanh trên điện thoại.</p>
+        <h1>Bộ sưu tập</h1>
       </section>
 
-      <Link href="/cua-hang" className="home-hero" aria-label="Khám phá bộ sưu tập Pensee">
+      <Link href="/cua-hang" className="home-hero" aria-label="Mở bộ sưu tập Pensee">
         <img src="/brand/pensee-welcome-current.png" alt="Bộ sưu tập Pensee" />
-        <span className="home-hero__veil" aria-hidden="true" />
-        <div className="home-hero__copy">
-          <span>Bộ sưu tập Pensee</span>
-          <strong>Đặt hàng sỉ ngay trên điện thoại</strong>
-          <small>Xem sản phẩm →</small>
-        </div>
       </Link>
 
       {failed ? (
         <section className="customer-empty-card home-catalog-error">
-          <strong>Chưa đọc được catalog</strong>
-          <p>Kết nối dữ liệu đang chậm. Tải lại trang sau khi PostgreSQL sẵn sàng.</p>
+          <strong>Không tải được sản phẩm</strong>
         </section>
       ) : (
         HOME_CATEGORIES.map((category) => {
@@ -139,24 +122,15 @@ export default async function HomePage() {
                 <div>
                   <span>{category.label}</span>
                   <h2>{category.title}</h2>
-                  <p>{category.description}</p>
                 </div>
-                <b>{products.filter((product) => product.categorySlug === category.slug).length}</b>
               </header>
 
               <Link
                 href={`/cua-hang?nhom=${encodeURIComponent(category.slug)}`}
                 className="home-category-banner"
-                aria-label={`Xem bộ sưu tập ${category.label}`}
+                aria-label={`Xem ${category.label}`}
               >
-                <img src="/brand/pensee-app-background.png" alt="" />
-                <span className="home-category-banner__glow" aria-hidden="true" />
-                <div>
-                  <small>{category.label}</small>
-                  <strong>{category.campaignTitle}</strong>
-                  <p>{category.campaignCopy}</p>
-                  <b>Xem bộ sưu tập →</b>
-                </div>
+                <img src={category.bannerSrc} alt={`Banner ${category.label}`} />
               </Link>
 
               {categoryProducts.length > 0 ? (
@@ -167,8 +141,7 @@ export default async function HomePage() {
                 </div>
               ) : (
                 <div className="home-category-empty">
-                  <strong>Chưa có sản phẩm có ảnh</strong>
-                  <p>Banner chủng loại vẫn hoạt động; card sản phẩm sẽ xuất hiện khi dữ liệu nguồn sẵn sàng.</p>
+                  <strong>Chưa có sản phẩm</strong>
                 </div>
               )}
 
@@ -176,7 +149,7 @@ export default async function HomePage() {
                 href={`/cua-hang?nhom=${encodeURIComponent(category.slug)}`}
                 className="home-category-section__link"
               >
-                Xem toàn bộ {category.label.toLocaleLowerCase("vi")}
+                Xem tất cả
                 <span aria-hidden="true">→</span>
               </Link>
             </section>
@@ -188,8 +161,7 @@ export default async function HomePage() {
         <div className="home-event-card__ornament" aria-hidden="true" />
         <div>
           <span>Sự kiện</span>
-          <h2>Ưu đãi và thông báo mới</h2>
-          <p>Mọi chương trình dành cho khách sỉ sẽ được cập nhật tại một nơi.</p>
+          <h2>Ưu đãi mới</h2>
         </div>
         <Link href="/su-kien" aria-label="Mở trang sự kiện">
           <svg aria-hidden="true" viewBox="0 0 24 24">
