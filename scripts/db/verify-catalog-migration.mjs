@@ -15,6 +15,7 @@ const EXPECTED_TABLES = [
   "brands",
   "cart_items",
   "carts",
+  "catalog_change_audit",
   "catalog_import_runs",
   "categories",
   "customer_profiles",
@@ -43,11 +44,16 @@ const EXPECTED_MIGRATIONS = [
   1783885000000,
   1783890000000,
   1783895000000,
+  1783900000000,
 ];
 
 const REQUIRED_INDEXES = [
   "cart_items_cart_variant_color_uidx",
   "carts_token_uidx",
+  "catalog_change_audit_actor_created_idx",
+  "catalog_change_audit_entity_created_idx",
+  "catalog_change_audit_product_created_idx",
+  "catalog_change_audit_request_idx",
   "order_items_order_variant_color_uidx",
   "orders_order_code_uidx",
   "orders_source_cart_uidx",
@@ -89,6 +95,10 @@ function isLocalDatabase(value) {
   }
 }
 
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
 const client = new Client({
   connectionString,
   ssl: isLocalDatabase(connectionString) ? undefined : { rejectUnauthorized: false },
@@ -96,7 +106,6 @@ const client = new Client({
 
 async function main() {
   await client.connect();
-
   try {
     const tableResult = await client.query(`
       SELECT tablename
@@ -107,54 +116,43 @@ async function main() {
     const actualTables = tableResult.rows.map((row) => String(row.tablename));
     const missingTables = EXPECTED_TABLES.filter((name) => !actualTables.includes(name));
     const unexpectedTables = actualTables.filter((name) => !EXPECTED_TABLES.includes(name));
-    if (missingTables.length > 0 || unexpectedTables.length > 0) {
-      throw new Error(
-        `Catalog table mismatch. Missing: ${missingTables.join(", ") || "none"}. Unexpected: ${unexpectedTables.join(", ") || "none"}.`,
-      );
-    }
+    assert(
+      missingTables.length === 0 && unexpectedTables.length === 0,
+      `Catalog table mismatch. Missing: ${missingTables.join(", ") || "none"}. Unexpected: ${unexpectedTables.join(", ") || "none"}.`,
+    );
 
     const enumResult = await client.query(`
       SELECT namespace.nspname AS schema_name
       FROM pg_type AS type_definition
-      JOIN pg_namespace AS namespace
-        ON namespace.oid = type_definition.typnamespace
+      JOIN pg_namespace AS namespace ON namespace.oid = type_definition.typnamespace
       WHERE type_definition.typname = 'catalog_import_status'
       ORDER BY namespace.nspname
     `);
     const enumSchemas = enumResult.rows.map((row) => String(row.schema_name));
-    if (enumSchemas.length !== 1 || enumSchemas[0] !== "japan_underwear") {
-      throw new Error(
-        `Expected only japan_underwear.catalog_import_status, found: ${enumSchemas.join(", ") || "none"}.`,
-      );
-    }
+    assert(
+      enumSchemas.length === 1 && enumSchemas[0] === "japan_underwear",
+      `Expected only japan_underwear.catalog_import_status, found: ${enumSchemas.join(", ") || "none"}.`,
+    );
 
     const importStatusResult = await client.query(`
-      SELECT type_namespace.nspname AS type_schema,
-             type_definition.typname AS type_name
+      SELECT type_namespace.nspname AS type_schema, type_definition.typname AS type_name
       FROM pg_attribute AS attribute
-      JOIN pg_class AS table_definition
-        ON table_definition.oid = attribute.attrelid
-      JOIN pg_namespace AS table_namespace
-        ON table_namespace.oid = table_definition.relnamespace
-      JOIN pg_type AS type_definition
-        ON type_definition.oid = attribute.atttypid
-      JOIN pg_namespace AS type_namespace
-        ON type_namespace.oid = type_definition.typnamespace
+      JOIN pg_class AS table_definition ON table_definition.oid = attribute.attrelid
+      JOIN pg_namespace AS table_namespace ON table_namespace.oid = table_definition.relnamespace
+      JOIN pg_type AS type_definition ON type_definition.oid = attribute.atttypid
+      JOIN pg_namespace AS type_namespace ON type_namespace.oid = type_definition.typnamespace
       WHERE table_namespace.nspname = 'japan_underwear'
         AND table_definition.relname = 'catalog_import_runs'
         AND attribute.attname = 'status'
         AND attribute.attnum > 0
         AND NOT attribute.attisdropped
     `);
-    if (
-      importStatusResult.rowCount !== 1 ||
-      importStatusResult.rows[0].type_schema !== "japan_underwear" ||
-      importStatusResult.rows[0].type_name !== "catalog_import_status"
-    ) {
-      throw new Error(
-        "catalog_import_runs.status does not use japan_underwear.catalog_import_status.",
-      );
-    }
+    assert(
+      importStatusResult.rowCount === 1 &&
+        importStatusResult.rows[0].type_schema === "japan_underwear" &&
+        importStatusResult.rows[0].type_name === "catalog_import_status",
+      "catalog_import_runs.status does not use japan_underwear.catalog_import_status.",
+    );
 
     const productIdentityResult = await client.query(`
       SELECT
@@ -166,19 +164,10 @@ async function main() {
         AND information_schema.columns.table_name = 'products'
         AND information_schema.columns.column_name = 'category_id'
     `);
-    if (productIdentityResult.rowCount !== 1) {
-      throw new Error("Không đọc được cấu trúc products.category_id.");
-    }
-    const productIdentity = productIdentityResult.rows[0];
-    if (!productIdentity.identity_index) {
-      throw new Error("Missing products_brand_category_model_uidx.");
-    }
-    if (productIdentity.legacy_index) {
-      throw new Error("Legacy products_brand_model_uidx still exists.");
-    }
-    if (productIdentity.category_nullable !== "NO") {
-      throw new Error("products.category_id must be NOT NULL.");
-    }
+    assert(productIdentityResult.rowCount === 1, "Không đọc được products.category_id.");
+    assert(productIdentityResult.rows[0].identity_index, "Missing products_brand_category_model_uidx.");
+    assert(!productIdentityResult.rows[0].legacy_index, "Legacy products_brand_model_uidx still exists.");
+    assert(productIdentityResult.rows[0].category_nullable === "NO", "products.category_id must be NOT NULL.");
 
     const variantColumnResult = await client.query(`
       SELECT column_name, is_nullable
@@ -186,20 +175,13 @@ async function main() {
       WHERE table_schema = 'japan_underwear'
         AND table_name = 'product_variants'
         AND column_name IN ('color_id', 'size_code', 'cup_code')
-      ORDER BY column_name
     `);
     const variantColumns = new Map(
       variantColumnResult.rows.map((row) => [String(row.column_name), String(row.is_nullable)]),
     );
-    if (variantColumns.has("color_id")) {
-      throw new Error("product_variants.color_id must not exist after migration 0003.");
-    }
-    if (variantColumns.get("size_code") !== "NO") {
-      throw new Error("product_variants.size_code must be NOT NULL.");
-    }
-    if (variantColumns.get("cup_code") !== "YES") {
-      throw new Error("product_variants.cup_code must exist and be nullable.");
-    }
+    assert(!variantColumns.has("color_id"), "product_variants.color_id must not exist.");
+    assert(variantColumns.get("size_code") === "NO", "product_variants.size_code must be NOT NULL.");
+    assert(variantColumns.get("cup_code") === "YES", "product_variants.cup_code must be nullable.");
 
     const indexResult = await client.query(
       `
@@ -212,34 +194,20 @@ async function main() {
     );
     const indexes = new Set(indexResult.rows.map((row) => String(row.indexname)));
     const missingIndexes = REQUIRED_INDEXES.filter((name) => !indexes.has(name));
-    if (missingIndexes.length > 0) {
-      throw new Error(`Missing required indexes: ${missingIndexes.join(", ")}.`);
-    }
+    assert(missingIndexes.length === 0, `Missing required indexes: ${missingIndexes.join(", ")}.`);
 
     const legacyVariantIndexResult = await client.query(`
       SELECT indexname
       FROM pg_indexes
       WHERE schemaname = 'japan_underwear'
-        AND indexname IN (
-          'product_variants_product_color_size_uidx',
-          'product_variants_color_idx'
-        )
+        AND indexname IN ('product_variants_product_color_size_uidx', 'product_variants_color_idx')
     `);
-    if (legacyVariantIndexResult.rowCount > 0) {
-      throw new Error(
-        `Legacy color-linked variant indexes still exist: ${legacyVariantIndexResult.rows.map((row) => row.indexname).join(", ")}.`,
-      );
-    }
+    assert(legacyVariantIndexResult.rowCount === 0, "Legacy color-linked variant indexes still exist.");
 
     const triggerResult = await client.query(`
       SELECT trigger_name, event_object_table
       FROM information_schema.triggers
       WHERE trigger_schema = 'japan_underwear'
-        AND trigger_name IN (
-          'cart_items_selection_same_product_trg',
-          'order_items_selection_same_product_trg',
-          'orders_creation_source_derive_trg'
-        )
     `);
     const triggers = new Set(
       triggerResult.rows.map((row) => `${row.event_object_table}:${row.trigger_name}`),
@@ -248,10 +216,14 @@ async function main() {
       "cart_items:cart_items_selection_same_product_trg",
       "order_items:order_items_selection_same_product_trg",
       "orders:orders_creation_source_derive_trg",
+      "products:products_catalog_version_trg",
+      "products:products_catalog_audit_trg",
+      "product_colors:product_colors_catalog_version_trg",
+      "product_colors:product_colors_catalog_audit_trg",
+      "product_variants:product_variants_catalog_version_trg",
+      "product_variants:product_variants_catalog_audit_trg",
     ]) {
-      if (!triggers.has(key)) {
-        throw new Error(`Missing required trigger: ${key}.`);
-      }
+      assert(triggers.has(key), `Missing required trigger: ${key}.`);
     }
 
     const lineColumnResult = await client.query(`
@@ -277,9 +249,7 @@ async function main() {
       "order_items.color_id",
       "order_items.quantity",
     ]) {
-      if (lineColumns.get(key) !== "NO") {
-        throw new Error(`${key} must exist and be NOT NULL.`);
-      }
+      assert(lineColumns.get(key) === "NO", `${key} must exist and be NOT NULL.`);
     }
 
     const locationColumnResult = await client.query(
@@ -296,9 +266,7 @@ async function main() {
       locationColumnResult.rows.map((row) => [String(row.column_name), String(row.is_nullable)]),
     );
     for (const columnName of REQUIRED_ORDER_LOCATION_COLUMNS) {
-      if (locationColumns.get(columnName) !== "YES") {
-        throw new Error(`orders.${columnName} must exist and be nullable.`);
-      }
+      assert(locationColumns.get(columnName) === "YES", `orders.${columnName} must be nullable.`);
     }
 
     const creationColumnResult = await client.query(
@@ -314,22 +282,39 @@ async function main() {
     const creationColumns = new Map(
       creationColumnResult.rows.map((row) => [String(row.column_name), String(row.is_nullable)]),
     );
-    if (creationColumns.get("order_source") !== "NO") {
-      throw new Error("orders.order_source must exist and be NOT NULL.");
+    assert(creationColumns.get("order_source") === "NO", "orders.order_source must be NOT NULL.");
+    for (const name of REQUIRED_ORDER_CREATION_COLUMNS.filter((value) => value !== "order_source")) {
+      assert(creationColumns.get(name) === "YES", `orders.${name} must be nullable.`);
     }
-    for (const columnName of REQUIRED_ORDER_CREATION_COLUMNS.filter(
-      (name) => name !== "order_source",
-    )) {
-      if (creationColumns.get(columnName) !== "YES") {
-        throw new Error(`orders.${columnName} must exist and be nullable.`);
+
+    const managedColumnResult = await client.query(`
+      SELECT table_name, column_name, is_nullable
+      FROM information_schema.columns
+      WHERE table_schema = 'japan_underwear'
+        AND (
+          (table_name = 'products' AND column_name IN ('row_version', 'updated_at'))
+          OR (table_name = 'product_colors' AND column_name IN ('row_version', 'updated_at'))
+          OR (table_name = 'product_variants' AND column_name IN ('row_version', 'updated_at'))
+        )
+    `);
+    const managedColumns = new Map(
+      managedColumnResult.rows.map((row) => [
+        `${row.table_name}.${row.column_name}`,
+        String(row.is_nullable),
+      ]),
+    );
+    for (const table of ["products", "product_colors", "product_variants"]) {
+      for (const column of ["row_version", "updated_at"]) {
+        assert(managedColumns.get(`${table}.${column}`) === "NO", `${table}.${column} must be NOT NULL.`);
       }
     }
 
-    const migrationTableResult = await client.query(
-      "SELECT to_regclass('drizzle.__drizzle_migrations') AS table_name",
-    );
-    if (!migrationTableResult.rows[0]?.table_name) {
-      throw new Error("drizzle.__drizzle_migrations does not exist.");
+    for (const signature of [
+      "japan_underwear.bump_catalog_row_version()",
+      "japan_underwear.record_catalog_change_audit()",
+    ]) {
+      const functionResult = await client.query("SELECT to_regprocedure($1) AS function_name", [signature]);
+      assert(functionResult.rows[0]?.function_name, `Missing function ${signature}.`);
     }
 
     const migrationResult = await client.query(`
@@ -341,21 +326,16 @@ async function main() {
     const missingMigrations = EXPECTED_MIGRATIONS.filter(
       (createdAt) => !appliedMigrations.includes(createdAt),
     );
-    if (missingMigrations.length > 0) {
-      throw new Error(`Missing Drizzle migration records: ${missingMigrations.join(", ")}.`);
-    }
+    assert(missingMigrations.length === 0, `Missing Drizzle migration records: ${missingMigrations.join(", ")}.`);
 
     console.log("Catalog DB verification OK.");
     console.log(`Tables: ${actualTables.length}.`);
     console.log("Enum: japan_underwear.catalog_import_status.");
     console.log("Product identity: brand + category + model.");
     console.log("Variant identity: product + size + cup; color selected separately per order line.");
-    console.log("Server cart identity: cart + product_variant_id + color_id.");
-    console.log("Order item identity: order + product_variant_id + color_id; quantity stored on the row.");
     console.log("Order creation identity: legacy cart | customer checkout | staff manual.");
-    console.log("Order lifecycle audit table: japan_underwear.order_status_events.");
-    console.log("Order delivery location: optional all-or-none snapshot on orders.");
-    console.log("Auth identity: internal UUID + external account mapping + database sessions.");
+    console.log("Catalog management: optimistic row_version + database audit triggers.");
+    console.log("Historical order snapshots remain separate from catalog state.");
     console.log(
       `Migration records: ${appliedMigrations.length} (${EXPECTED_MIGRATIONS.length} required records present).`,
     );

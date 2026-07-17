@@ -81,6 +81,7 @@ export const products = catalogSchema.table(
     sourceProductId: text("source_product_id"),
     sourceUrl: text("source_url"),
     isActive: boolean("is_active").notNull().default(true),
+    rowVersion: integer("row_version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -93,6 +94,8 @@ export const products = catalogSchema.table(
     ),
     index("products_category_idx").on(table.categoryId),
     index("products_active_idx").on(table.isActive),
+    check("products_base_price_nonnegative_chk", sql`${table.basePrice} >= 0`),
+    check("products_row_version_positive_chk", sql`${table.rowVersion} >= 1`),
   ],
 );
 
@@ -108,12 +111,15 @@ export const productColors = catalogSchema.table(
     swatch: text("swatch"),
     sortOrder: integer("sort_order").notNull().default(0),
     isActive: boolean("is_active").notNull().default(true),
+    rowVersion: integer("row_version").notNull().default(1),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex("product_colors_product_code_uidx").on(table.productId, table.code),
     index("product_colors_product_idx").on(table.productId),
     check("product_colors_code_nonempty_chk", sql`btrim(${table.code}) <> ''`),
     check("product_colors_name_nonempty_chk", sql`btrim(${table.name}) <> ''`),
+    check("product_colors_row_version_positive_chk", sql`${table.rowVersion} >= 1`),
   ],
 );
 
@@ -129,6 +135,7 @@ export const productVariants = catalogSchema.table(
     sku: text("sku"),
     priceOverride: integer("price_override"),
     isActive: boolean("is_active").notNull().default(true),
+    rowVersion: integer("row_version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -152,6 +159,7 @@ export const productVariants = catalogSchema.table(
       "product_variants_price_override_nonnegative_chk",
       sql`${table.priceOverride} is null or ${table.priceOverride} >= 0`,
     ),
+    check("product_variants_row_version_positive_chk", sql`${table.rowVersion} >= 1`),
   ],
 );
 
@@ -412,6 +420,51 @@ export const catalogImportRuns = catalogSchema.table(
   (table) => [index("catalog_import_runs_status_idx").on(table.status)],
 );
 
+export const catalogChangeAudit = catalogSchema.table(
+  "catalog_change_audit",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "restrict" }),
+    actorLabel: text("actor_label").notNull(),
+    requestId: uuid("request_id"),
+    entityType: text("entity_type").$type<"product" | "color" | "variant">().notNull(),
+    entityId: uuid("entity_id").notNull(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "restrict" }),
+    action: text("action").$type<"updated">().notNull().default("updated"),
+    beforeSnapshot: jsonb("before_snapshot").$type<Record<string, unknown>>().notNull(),
+    afterSnapshot: jsonb("after_snapshot").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("catalog_change_audit_product_created_idx").on(table.productId, table.createdAt),
+    index("catalog_change_audit_actor_created_idx").on(table.actorUserId, table.createdAt),
+    index("catalog_change_audit_entity_created_idx").on(
+      table.entityType,
+      table.entityId,
+      table.createdAt,
+    ),
+    index("catalog_change_audit_request_idx")
+      .on(table.requestId)
+      .where(sql`${table.requestId} is not null`),
+    check("catalog_change_audit_actor_label_nonempty_chk", sql`btrim(${table.actorLabel}) <> ''`),
+    check(
+      "catalog_change_audit_entity_type_chk",
+      sql`${table.entityType} in ('product', 'color', 'variant')`,
+    ),
+    check("catalog_change_audit_action_chk", sql`${table.action} = 'updated'`),
+    check(
+      "catalog_change_audit_before_object_chk",
+      sql`jsonb_typeof(${table.beforeSnapshot}) = 'object'`,
+    ),
+    check(
+      "catalog_change_audit_after_object_chk",
+      sql`jsonb_typeof(${table.afterSnapshot}) = 'object'`,
+    ),
+  ],
+);
+
 export type Brand = typeof brands.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type ProductColor = typeof productColors.$inferSelect;
@@ -421,3 +474,4 @@ export type Cart = typeof carts.$inferSelect;
 export type CartItem = typeof cartItems.$inferSelect;
 export type Order = typeof orders.$inferSelect;
 export type OrderItem = typeof orderItems.$inferSelect;
+export type CatalogChangeAudit = typeof catalogChangeAudit.$inferSelect;
